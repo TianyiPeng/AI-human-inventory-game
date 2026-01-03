@@ -1,3 +1,4 @@
+Using LLM provider: gemini
 Loaded CSV with 50 periods of demand data
 Detected 1 items: ['chips(Regular)']
 Date range: Period_1 to Period_50
@@ -12,10 +13,10 @@ Running full CSV horizon: 50 periods
 Period 1 (Period_1) VM Action:
 ======================================================================
 {
-  "rationale": "World knowledge & product: generic snack SKU with no calendar events provided. Historical demand prior (samples) avg = 111.4 units/period. Promised lead time = 2 periods, so order must cover L+1 = 3 periods of demand because arrivals occur after decision. Forecast = 3 * 111.4 \u2248 334 units to meet expected demand over the coverage window. No on-hand or in-transit inventory to offset. No evidence of lead-time deviation or regime shift (no concluded arrivals yet). Ordering ~334 balances service (avoid stockouts) against holding cost given profit $4/unit and holding $1/unit/period.",
+  "rationale": "(a) Product is 'chips(Regular)', a high-volume snack item. Historical samples [112, 97, 116, 138, 94] suggest a mean demand of ~111.4 units/period. (b) As it is Period 1, I rely on these samples. (c) Promised lead time is 2 periods. Following the timeline, an order placed in P1 arrives in P3 and becomes visible in P4. (d) Current inventory is 0. I need to cover demand for Period 1, 2, and 3 (L+1 periods) to ensure stock-out protection until the first order arrives. Expected demand for 3 periods is ~335 units. (e) To mitigate stock-outs immediately given 0 on-hand, I will order enough to cover the lead time pipeline plus a small safety buffer. Order calculation: (3 * 111.4) + buffer \u2248 350 units.",
   "carry_over_insight": "",
   "action": {
-    "chips(Regular)": 334
+    "chips(Regular)": 350
   }
 }
 ======================================================================
@@ -26,17 +27,17 @@ Period 1 (Period_1) Demand: {
 }
 
 === Period 1 Summary ===
-chips(Regular): ordered=334, arrived=0, starting on-hand inventory=0, demand=91, sold=0, ending on-hand inventory=0
+chips(Regular): ordered=350, arrived=0, starting on-hand inventory=0, demand=91, sold=0, ending on-hand inventory=0
 Daily Profit: $0.00, Daily Holding Cost: $0.00
 Daily Reward (R_t): $0.00
 
 Period 2 (Period_2) VM Action:
 ======================================================================
 {
-  "rationale": "a) World/product: chips(Regular) is non-seasonal snack; no calendar events noted. b) Demand regime: historical seed mean \u2248111 (samples [112,97,116,138,94]); Period 1 observed demand=91\u2014no sustained shift (only one period). c) Lead time/missing orders: Period 1 order=334 has not arrived by Period 1 conclude (arrived=0) but in-transit=334 shown; insufficient evidence to declare loss or lead-time change. d) Inventory & pipeline: on-hand=0, in-transit=334. Supplier promised lead time=2 \u2192 planning horizon = L+1 = 3 periods. Expected demand \u2248110 units/period \u2192 need \u2248330 units to cover 3 periods. e) Order logic: in-transit 334 already covers ~3 periods of expected demand; avoid additional order to reduce holding cost and risk. Order 0 this period.",
+  "rationale": "a) Product: chips(Regular). This is a standard snack item with relatively stable baseline demand. b) Demand Analysis: Historical samples (112, 97, 116, 138, 94) average ~111 units. Period 1 actual demand was 91, which is slightly below the historical average but within a normal range. c) Lead Time: Promised lead time is 2 periods. The order placed in Period 1 (350 units) is expected to arrive during Period 3's arrival phase (visible at the start of Period 4). No arrivals yet, which is expected for L=2. d) Inventory & Pipeline: Current on-hand is 0. In-transit is 350. Since I cannot satisfy demand until the Period 1 order arrives in Period 3, I have missed Period 1 demand and will likely miss Period 2 and 3 demand. e) Decision: I need to cover demand for Period 4 (when the first order arrives) and beyond. Targeted inventory level = Expected demand * (L+1) + safety stock. With L=2, L+1=3. Expected demand ~110. Target ~330-400. I currently have 350 in the pipeline. I will place another order of 110 to maintain the pipeline for Period 5, ensuring I don't run out immediately after the first shipment arrives.",
   "carry_over_insight": "",
   "action": {
-    "chips(Regular)": 0
+    "chips(Regular)": 110
   }
 }
 ======================================================================
@@ -47,17 +48,17 @@ Period 2 (Period_2) Demand: {
 }
 
 === Period 2 Summary ===
-chips(Regular): ordered=0, arrived=0, starting on-hand inventory=0, demand=246, sold=0, ending on-hand inventory=0
+chips(Regular): ordered=110, arrived=0, starting on-hand inventory=0, demand=246, sold=0, ending on-hand inventory=0
 Daily Profit: $0.00, Daily Holding Cost: $0.00
 Daily Reward (R_t): $0.00
 
 Period 3 (Period_3) VM Action:
 ======================================================================
 {
-  "rationale": "a) World/calendar: No calendar date specifics provided; chips are a staple with no known seasonality for Period_3. b) Demand regime: Historical seed demand avg \u2248111 (samples [112,97,116,138,94]). Recent observed period demands: P1=91, P2=246 (P2 spike may be an isolated event or emerging regime, but only 2 periods of observation \u2014 not enough to declare sustained change). c) Lead time / in-transit: Supplier promised L=2. There is an in-transit shipment of 334 units (ordered in Period 1). Per mechanics, that shipment should arrive during Period 3 (Period1+2) but arrivals are only confirmed in the conclude message at Period 4. Treat the 334 as available to arrive this period for planning purposes. d) Inventory & pipeline assessment: Need to cover (L+1)=3 periods of demand (current period's demand occurs after decision). Use a conservative blended demand forecast: recent periods average = (91+246)/2 = 168.5 ppd; historical seed avg \u2248111 \u2014 lean toward recent elevated demand to avoid stockouts given lost sales so far. Target coverage = 3 * 168.5 \u2248 505.5 units. Current coverage = on-hand 0 + in-transit 334 = 334. Required order = 505.5 - 334 \u2248 171.5 \u2192 round up to 172 units. e) Final order logic: Order 172 units now to cover approximately three periods of expected elevated demand while limiting excess holding. Monitor arrivals in Period 4 conclude to confirm lead time and adjust future orders.",
+  "rationale": "In Period 3, I am managing 'chips(Regular)'. Historical demand samples suggested a mean of ~111. However, Period 2 saw a significant demand spike to 246, which is more than double the prior average. This suggests a potential regime shift or high variance, possibly related to an unstated event or seasonal factor. Current inventory is 0 because the Period 1 order (350 units) and Period 2 order (110 units) are still in transit. With a promised lead time of 2 periods, the Period 1 order is expected to arrive during Period 3 (visible at start of Period 4). Total in-transit is 460. Calculating the target for (L+1) = 3 periods of demand: using an adjusted forecast of ~200/period (accounting for the P2 spike), I need ~600 units in the pipeline. Current pipeline (0 on-hand + 460 in-transit) = 460. I need to order ~140 more units to cover the gap and build a buffer against the increased demand observed in Period 2.",
   "carry_over_insight": "",
   "action": {
-    "chips(Regular)": 172
+    "chips(Regular)": 140
   }
 }
 ======================================================================
@@ -68,17 +69,17 @@ Period 3 (Period_3) Demand: {
 }
 
 === Period 3 Summary ===
-chips(Regular): ordered=172, arrived=0, starting on-hand inventory=0, demand=285, sold=0, ending on-hand inventory=0
+chips(Regular): ordered=140, arrived=0, starting on-hand inventory=0, demand=285, sold=0, ending on-hand inventory=0
 Daily Profit: $0.00, Daily Holding Cost: $0.00
 Daily Reward (R_t): $0.00
 
 Period 4 (Period_4) VM Action:
 ======================================================================
 {
-  "rationale": "World/calendar: no date-specific events provided. Product: staple snack with no strong seasonality. Demand analysis: seeded prior mean ~111 units. Recent realized demand: P1=91, P2=246, P3=285 \u2014 two high periods but not yet a sustained (3+ period) regime change, so treat as possible short spike. Lead time / pipeline: promised LT=2; no concluded arrivals yet (arrived=0 in P1\u2013P3 conclude), so cannot confirm LT deviation or lost orders. Inventory/pipeline: on-hand=0, in-transit=506 (orders from P1 and P3). Decision logic: required coverage = (L+1)=3 periods. Use conservative demand forecast \u2248120\u2013150 units/period (blend of historical prior and recent uptick) \u2192 ~360\u2013450 units needed. In-transit 506 already covers next 3 periods\u2019 demand with buffer. Given high holding cost ($1/unit/period) vs. profit ($4/unit), avoid adding inventory now. No evidence yet to record a sustained regime/lead-time change.",
-  "carry_over_insight": "",
+  "rationale": "In Period 4, I am managing 'chips(Regular)'. The historical demand samples (112, 97, 116, 138, 94) suggested an average around 111. However, actual demand in P1-P3 (91, 246, 285) shows a significant upward trajectory, with the last two periods averaging 265. This indicates a demand regime shift or a strong growth trend. Regarding lead time, the promised lead time is 2. The order placed in P1 (350 units) is expected to arrive during P3's arrival phase and become visible in P4's start-of-period state (reflected in the 'Period 3 conclude' message). Looking at the P3 conclude message, arrived=0. This suggests the actual lead time is likely \u2265 3, or the P1 order is delayed/lost. Currently, On-hand = 0 and In-transit = 600 (from P1, P2, P3 orders: 350+110+140). My target pipeline (inventory position) should cover demand for (L+1) periods. Using a conservative L=3 and a forecast of ~280/period, I need roughly 1120 units in the pipeline to avoid stockouts once shipments start arriving. With 600 already in-transit and 0 on-hand, I will order 520 units to bridge the gap to the revised demand levels.",
+  "carry_over_insight": "Demand regime shift: Actual demand in P2-P3 (avg 265) is significantly higher than historical samples (avg 111). Lead time for P1 order (350 units) exceeds promised 2 periods, as it did not arrive by P3 conclude.",
   "action": {
-    "chips(Regular)": 0
+    "chips(Regular)": 520
   }
 }
 ======================================================================
@@ -89,17 +90,17 @@ Period 4 (Period_4) Demand: {
 }
 
 === Period 4 Summary ===
-chips(Regular): ordered=0, arrived=334 units (ordered on Period 1, lead_time was 3 periods), 172 units (ordered on Period 3, lead_time was 1 periods), starting on-hand inventory=506, demand=437, sold=437, ending on-hand inventory=69
-Daily Profit: $1748.00, Daily Holding Cost: $69.00
-Daily Reward (R_t): $1679.00
+chips(Regular): ordered=520, arrived=350 units (ordered on Period 1, lead_time was 3 periods), 110 units (ordered on Period 2, lead_time was 2 periods), 140 units (ordered on Period 3, lead_time was 1 periods), starting on-hand inventory=600, demand=437, sold=437, ending on-hand inventory=163
+Daily Profit: $1748.00, Daily Holding Cost: $163.00
+Daily Reward (R_t): $1585.00
 
 Period 5 (Period_5) VM Action:
 ======================================================================
 {
-  "rationale": "a) World/product: chips(Regular) is a non-seasonal snack SKU; no calendar events noted. b) Demand regime: historical baseline mean \u2248111 (prior samples). Recent observed demand P2=246, P3=285, P4=437 \u2014 three consecutive high-demand periods with average = (246+285+437)/3 = 322.7, indicating a sustained higher-demand regime. c) Lead time / missing orders: Promised LT=2 but observed variability: P1\u2192P4 gave LT=3, P3\u2192P4 gave LT=1. Evidence is mixed, so assume promised LT=2 for planning but be conservative. d) Inventory & pipeline: On-hand=69, In-transit=0. Need coverage for (L+1)=3 periods because orders placed now will not arrive for current period demand and LT may be >=2. e) Final order logic: Target to cover 3 periods of demand at the recent elevated mean \u2248323 units/period => target on-hand+in-transit = 3*323 = 969.9 \u2248 970 units. Order = max(0, 970 - current_on_hand(69) - in_transit(0)) = 901 units. This balances service (avoid stockouts during confirmed higher regime) against holding cost; monitor arrivals to adjust future orders.",
-  "carry_over_insight": "Demand regime shift confirmed (Periods 2\u20134): average demand increased from ~111 to ~323 (+190%), based on P2=246, P3=285, P4=437.",
+  "rationale": "(a) Product is 'chips(Regular)', a high-volume snack item. (b) Demand Analysis: Historical samples (avg 111) are no longer relevant. Recent demand (P2: 246, P3: 285, P4: 437) shows an explosive upward trend. P4 demand of 437 is a significant spike; I will forecast conservatively around 350-400 for the next periods to avoid excessive holding costs while meeting the new high-demand regime. (c) Lead Time: P1 order took 3 periods, P2 took 2, and P3 took 1. This variability suggests the supplier is catching up or lead times are unstable. Currently, no orders are in transit besides the one placed in P4 (520 units). (d) Pipeline: On-hand is 163. Order from P4 (520) is expected in P6 or P7. (e) Logic: Total pipeline (163 on-hand + 520 in-transit) = 683. If demand stays at ~400, I need to cover P5, P6, and P7 (L+1 = 3 periods). 3 * 400 = 1200. 1200 - 683 = 517. I will order 500 to maintain a high service level for this surging demand.",
+  "carry_over_insight": "Demand regime shift confirmed: Period 4 demand (437) reinforces the shift from historical average (111) to a high-demand regime (P2-P4 avg 322, with P4 > 400). Lead times are highly variable (1 to 3 periods observed).",
   "action": {
-    "chips(Regular)": 901
+    "chips(Regular)": 500
   }
 }
 ======================================================================
@@ -110,17 +111,17 @@ Period 5 (Period_5) Demand: {
 }
 
 === Period 5 Summary ===
-chips(Regular): ordered=901, arrived=0, starting on-hand inventory=69, demand=448, sold=69, ending on-hand inventory=0
-Daily Profit: $276.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $276.00
+chips(Regular): ordered=500, arrived=0, starting on-hand inventory=163, demand=448, sold=163, ending on-hand inventory=0
+Daily Profit: $652.00, Daily Holding Cost: $0.00
+Daily Reward (R_t): $652.00
 
 Period 6 (Period_6) VM Action:
 ======================================================================
 {
-  "rationale": "World/calendar: none given. Product: chips \u2014 historically snack category, demand spiked earlier. Demand analysis: recent periods show a sustained high-demand regime (P2\u2013P5: 246,285,437,448) \u2014 expect next-period demand ~400 units (conservative forecast). Lead-time vs. orders: mixed past evidence (P1\u2192P4 gave lead_time=3; P3\u2192P4 gave lead_time=1); no sustained lead-time change confirmed. Inventory/pipeline: on-hand=0, in-transit=901 (ordered P5). Decision logic: supplier promised L=2 so plan to cover (L+1)=3 periods of demand \u2248 3\xd7400=1200 units. Shortfall = 1200 \u2212 (on-hand + in-transit) = 1200 \u2212 901 = 299. Round to 300 to ensure coverage while avoiding excessive holding costs (holding=$1 vs profit=$4). Place order of 300 units.",
-  "carry_over_insight": "",
+  "rationale": "The demand for 'chips(Regular)' has stabilized into a high-demand regime, significantly exceeding the historical samples (111). Over the last four periods (P2-P5), demand has been 246, 285, 437, and 448 respectively, averaging 354 overall and 442 over the last two. Despite arriving 600 units in P4, a stockout occurred in P5 because no orders arrived and demand was high (448). Currently, on-hand inventory is 0. There are 1,020 units in-transit: 520 units (ordered P4) and 500 units (ordered P5). Historical lead times have been highly volatile (1, 2, and 3 periods). Given the promised lead time is 2, the P4 order (520) is expected to arrive during P6 and the P5 order (500) during P7. My objective is to cover demand for (L+1) periods (P6, P7, P8). Estimating demand at ~450 per period, I need ~1350 units in the pipeline. Current pipeline (On-hand 0 + In-transit 1020) is 1020. I will order 450 units to maintain a healthy safety stock and cover potential lead time variability, especially since current stock is 0 and I've already lost sales due to stockouts.",
+  "carry_over_insight": "Demand regime shift confirmed: Period 5 demand (448) aligns with Period 4 (437), establishing a new high-demand regime (~440-450) far above historical averages. Lead time remains volatile (1-3 periods).",
   "action": {
-    "chips(Regular)": 300
+    "chips(Regular)": 450
   }
 }
 ======================================================================
@@ -131,17 +132,17 @@ Period 6 (Period_6) Demand: {
 }
 
 === Period 6 Summary ===
-chips(Regular): ordered=300, arrived=901 units (ordered on Period 5, lead_time was 1 periods), starting on-hand inventory=901, demand=587, sold=587, ending on-hand inventory=314
-Daily Profit: $2348.00, Daily Holding Cost: $314.00
-Daily Reward (R_t): $2034.00
+chips(Regular): ordered=450, arrived=520 units (ordered on Period 4, lead_time was 2 periods), 500 units (ordered on Period 5, lead_time was 1 periods), starting on-hand inventory=1020, demand=587, sold=587, ending on-hand inventory=433
+Daily Profit: $2348.00, Daily Holding Cost: $433.00
+Daily Reward (R_t): $1915.00
 
 Period 7 (Period_7) VM Action:
 ======================================================================
 {
-  "rationale": "World + demand: recent demand has accelerated \u2014 Periods 4\u20136 = [437,448,587], 3-period avg \u2248 491 units. Lead-time behavior: promised 2 but observed variability (P1\u2192P4 LT=3, P3\u2192P4 LT=1, P5\u2192P6 LT=1); shipments can arrive in 1\u20133 periods so keep safety. Coverage target: (L+1)=3 periods of demand \u2192 3 * 491 \u2248 1,473 units. Inventory position: on-hand 314 + in-transit 300 = 614. Shortfall \u2248 1,473 \u2212 614 = 859. Place order to cover this shortfall while limiting excess holding cost. Order = 860 units.",
-  "carry_over_insight": "",
+  "rationale": "The demand for chips(Regular) has shown a massive surge, far exceeding historical samples (avg 111). Recent demand is: P4=437, P5=448, P6=587. This indicates an upward trend or a peak seasonal regime. The average of the last 3 periods is ~490. Lead times have been volatile, ranging from 1 to 3 periods (P1=3, P2=2, P3=1, P4=2, P5=1). To manage this, I need to cover demand for Period 7 (the current period) plus the promised lead time of 2 periods (Periods 8 and 9). Given the trend, I will forecast Period 7-9 demand at approximately 550 units per period, totaling 1,650 units. Current On-hand is 433 and In-transit is 450 (from P6). Pipeline total = 883. Target (1,650) - Pipeline (883) = 767. I will order 760 units to buffer against the rising demand trend and potential lead time delays, while balancing the $1.0 holding cost against the $4.0 profit.",
+  "carry_over_insight": "Demand is trending upwards beyond the previously established high-demand regime: P6 demand (587) is 30% higher than the P4-P5 average (~442). Total demand regime currently estimated at 500-600 units/period.",
   "action": {
-    "chips(Regular)": 860
+    "chips(Regular)": 760
   }
 }
 ======================================================================
@@ -152,17 +153,17 @@ Period 7 (Period_7) Demand: {
 }
 
 === Period 7 Summary ===
-chips(Regular): ordered=860, arrived=0, starting on-hand inventory=314, demand=637, sold=314, ending on-hand inventory=0
-Daily Profit: $1256.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $1256.00
+chips(Regular): ordered=760, arrived=0, starting on-hand inventory=433, demand=637, sold=433, ending on-hand inventory=0
+Daily Profit: $1732.00, Daily Holding Cost: $0.00
+Daily Reward (R_t): $1732.00
 
 Period 8 (Period_8) VM Action:
 ======================================================================
 {
-  "rationale": "World/calendar: none provided. Demand analysis: observed realized demand has trended up: P4=437, P5=448, P6=587, P7=637 -> recent mean \u2248527 and trending toward ~600. Lead-time evidence: arrivals show variable actual lead times (P1\u2192P4:3, P3\u2192P4:1, P5\u2192P6:1) \u2014 no sustained change confirmed. Inventory/pipeline: on-hand=0, in-transit=1160 (P6:300, P7:860). Decision rule: supplier promised L=2 so plan to cover (L+1)=3 future periods of demand. Using a target demand \u2248600 per period => coverage target \u22481800. Current pipeline provides 1160, so order \u2248640. Add small safety buffer for demand uncertainty and possible lead-time variability. Final order rounded to 700 units.",
-  "carry_over_insight": "",
+  "rationale": "The demand for 'chips(Regular)' has entered a significantly higher regime, with the most recent demand in Period 7 reaching 637 units. Recent demand (P6: 587, P7: 637) suggests a current regime of ~600-650 units/period, drastically higher than the initial historical samples (~111). We currently have 0 on-hand inventory and 1,210 units in-transit (450 from P6 and 760 from P7). Actual lead times have fluctuated between 1 and 3 periods, though 1-2 periods is most common recently. To cover the current period (P8) and the lead-time window (L+1 = 3 periods), we need roughly 1,800-1,950 units in the pipeline. Total Pipeline (On-hand 0 + In-transit 1210) = 1210. Gap to cover 3 periods of demand = 1950 - 1210 = 740 units. Given the high demand and the risk of stockouts (which we are currently experiencing), a robust order of 750 units is necessary to rebuild inventory and match the new demand level.",
+  "carry_over_insight": "Demand regime shift confirmed: P6-P7 demand (avg 612) shows a further +40% increase over the P4-P5 regime (~440). Lead times remain inconsistent, ranging from 1 to 3 periods.",
   "action": {
-    "chips(Regular)": 700
+    "chips(Regular)": 750
   }
 }
 ======================================================================
@@ -173,17 +174,17 @@ Period 8 (Period_8) Demand: {
 }
 
 === Period 8 Summary ===
-chips(Regular): ordered=700, arrived=0, starting on-hand inventory=0, demand=776, sold=0, ending on-hand inventory=0
+chips(Regular): ordered=750, arrived=0, starting on-hand inventory=0, demand=776, sold=0, ending on-hand inventory=0
 Daily Profit: $0.00, Daily Holding Cost: $0.00
 Daily Reward (R_t): $0.00
 
 Period 9 (Period_9) VM Action:
 ======================================================================
 {
-  "rationale": "World & product: chips are non-seasonal but recent periods show a strong upward demand trend. Demand analysis: recent demands P6\u2013P8 = [587,637,776], avg \u2248 667 units/period and still accelerating vs earlier regime; use recent average as primary forecast. Lead time & pipeline: promised LT=2 but observed actuals vary (P1\u2192P4 LT=3; P3\u2192P4 LT=1; P5\u2192P6 LT=1). In-transit = 1860 (orders P6/P7/P8) and on-hand=0. Risk-averse planning: treat actual LT as up to 3 periods (use L=3) so require coverage for L+1=4 upcoming periods. Demand cover needed \u2248 4\xd7667 = 2668 units. Current pipeline provides 1860 \u2192 shortfall \u2248 808 units. Ordering decision: place order to cover shortfall plus small buffer for continued acceleration and possible lost/delayed shipments. Chosen order = 1400 units (covers shortfall and buffer while limiting holding cost exposure).",
-  "carry_over_insight": "Demand acceleration confirmed (Periods 6\u20138): avg demand increased to \u2248667 units/period vs prior regime avg \u2248323 (Periods 2\u20134), +107%; treat new higher regime as sustained.",
+  "rationale": "The demand for chips(Regular) has undergone multiple significant regime shifts. Historical samples were ~111. P2-P5 averaged ~350, and the most recent periods (P6-P8) have averaged ~667 (587, 637, 776), with P8 peaking at 776. This suggests an ongoing upward trend or a new high-demand regime of approximately 750-800 units per period. Lead times are highly variable, ranging from 1 to 3 periods (P4: 1, 2, and 3; P5: none; P6: 1 and 2; P7-P8: none). Currently, on-hand inventory is 0. In-transit inventory is 1,960 units (P6: 450, P7: 760, P8: 750). The pipeline needs to cover the current period (P9) plus the lead time (avg 2, max 3). To cover P9-P11 at an estimated 800 units/period, I need ~2400 units. My current total inventory (On-hand 0 + In-transit 1960) is 1960. I need to order approximately 440 more units to reach the 2400 target. However, given the volatility of lead times and the risk of stockouts (evident in P5, P7, and P8), I will order slightly more (600) to bolster safety stock against the rising demand trend.",
+  "carry_over_insight": "Demand regime shift confirmed: P8 demand (776) continues the upward trend, with the P6-P8 average (~667) representing a 50% increase over the P4-P5 regime (~442). Total demand is now forecasted at 750-800 units per period.",
   "action": {
-    "chips(Regular)": 1400
+    "chips(Regular)": 600
   }
 }
 ======================================================================
@@ -194,17 +195,17 @@ Period 9 (Period_9) Demand: {
 }
 
 === Period 9 Summary ===
-chips(Regular): ordered=1400, arrived=0, starting on-hand inventory=0, demand=963, sold=0, ending on-hand inventory=0
+chips(Regular): ordered=600, arrived=0, starting on-hand inventory=0, demand=963, sold=0, ending on-hand inventory=0
 Daily Profit: $0.00, Daily Holding Cost: $0.00
 Daily Reward (R_t): $0.00
 
 Period 10 (Period_10) VM Action:
 ======================================================================
 {
-  "rationale": "a) World/product: chips are non-seasonal; recent history shows large sustained demand acceleration (carry-over insights). b) Demand regime: Periods 6\u20138 avg \u2248667; Period 9 spike to 963 may be a further uptick but not yet sustained. Use conservative post-Period-9 forecast \u2248667\u2013800 units/period. c) Lead time / arrivals: historical concluded lead_times vary (P1->P4 = 3; P3->P4 = 1; P5->P6 = 1). Promised L=2 but actual has been variable; no sustained lead-time change proven. d) Inventory/pipeline: On-hand=0, In-transit=3260 units. Required coverage = (L+1)=3 periods of demand. At forecast 667 units/period, 3-period demand\u22482001; at 800\u22482400. In-transit (3260) comfortably covers 3 periods, providing buffer vs. variability. Holding cost $1 vs profit $4 favors avoiding excess inventory. e) Order decision: Do not order this period to avoid unnecessary holding cost; monitor next conclude messages to confirm arrivals and lead-time behavior before ordering.",
-  "carry_over_insight": "",
+  "rationale": "The demand for 'chips(Regular)' has entered an extreme growth phase, with the most recent demand in Period 9 reaching 963 units, significantly higher than the previous Period 8 (776). The current regime is now estimated at 950-1000 units per period. Lead times have been inconsistent (1-3 periods). Currently, there are 2560 units in-transit (ordered in Periods 6, 7, 8, and 9). Specifically, Period 6 (450), Period 7 (760), Period 8 (750), and Period 9 (600) orders are all pending. With a maximum observed lead time of 3 periods, the Period 6 and 7 orders (1210 units total) are highly likely to arrive in Period 10, though they aren't visible yet. Inventory is currently 0, meaning we have lost significant sales. To cover (L+1) = 3 periods of demand at a rate of 1000/period, I need a pipeline of ~3000 units. My current in-transit is 2560. I will order 1200 units to ensure I have enough stock to meet the accelerating demand and rebuild a safety buffer, accounting for the possibility that some older orders might be lost or further delayed.",
+  "carry_over_insight": "Demand regime shift confirmed: Period 9 demand (963) shows continued rapid acceleration, now approximately 9x the historical average (111). Current demand regime is estimated at 950-1000 units/period. Lead times are unreliable, requiring a larger safety stock buffer.",
   "action": {
-    "chips(Regular)": 0
+    "chips(Regular)": 1200
   }
 }
 ======================================================================
@@ -215,17 +216,17 @@ Period 10 (Period_10) Demand: {
 }
 
 === Period 10 Summary ===
-chips(Regular): ordered=0, arrived=0, starting on-hand inventory=0, demand=863, sold=0, ending on-hand inventory=0
+chips(Regular): ordered=1200, arrived=0, starting on-hand inventory=0, demand=863, sold=0, ending on-hand inventory=0
 Daily Profit: $0.00, Daily Holding Cost: $0.00
 Daily Reward (R_t): $0.00
 
 Period 11 (Period_11) VM Action:
 ======================================================================
 {
-  "rationale": "Recent periods show a sustained high-demand regime. Recent realized demands P6\u2013P10 average \u2248765 units/period; using L=2 (cover L+1=3 periods) target pipeline cover \u22483\xd7765\u22482,295 units. Current on-hand=0 and in-transit=3,260 units \u2014 sufficient to cover the next several periods even if some arrival variability occurs. Historical arrivals show variable actual lead times (1\u20133 periods) and occasional delayed shipments, so avoid over-ordering to reduce holding cost given high in-transit. Therefore place no new order this period.",
-  "carry_over_insight": "",
+  "rationale": "The SKU 'chips(Regular)' is experiencing an extremely aggressive demand spike, moving from an initial average of ~111 to a current regime of ~850-950 units per period (P9: 963, P10: 863). On-hand inventory is 0, meaning we have stocked out for four consecutive periods (P7-P10). Lead times are highly volatile (1-3 periods). We currently have 3,760 units in-transit: P6(450), P7(760), P8(750), P9(600), and P10(1200). The P6 order is now significantly overdue (L=4 if it arrives next), suggesting possible order loss or severe delays. Our target pipeline must cover (L+1) periods of demand. With L estimated at 3 and demand at ~950, we need ~3,800 units in the system. Given 0 on-hand and 3,760 in-transit, we are technically covered if all orders arrive, but the consecutive stockouts and potential order loss necessitate a large order to break the cycle and build a safety buffer. I will order 1,200 units to ensure future coverage against further demand acceleration and supply instability.",
+  "carry_over_insight": "Demand regime stabilized at ~850-950 units/period (P9-P10 avg: 913), confirmed as a 8x-9x increase over historical samples. Supply chain instability confirmed: P6 order (450 units) is now 4 periods overdue (Promised L=2).",
   "action": {
-    "chips(Regular)": 0
+    "chips(Regular)": 1200
   }
 }
 ======================================================================
@@ -236,17 +237,17 @@ Period 11 (Period_11) Demand: {
 }
 
 === Period 11 Summary ===
-chips(Regular): ordered=0, arrived=1400 units (ordered on Period 9, lead_time was 2 periods), starting on-hand inventory=1400, demand=1136, sold=1136, ending on-hand inventory=264
-Daily Profit: $4544.00, Daily Holding Cost: $264.00
-Daily Reward (R_t): $4280.00
+chips(Regular): ordered=1200, arrived=600 units (ordered on Period 9, lead_time was 2 periods), starting on-hand inventory=600, demand=1136, sold=600, ending on-hand inventory=0
+Daily Profit: $2400.00, Daily Holding Cost: $0.00
+Daily Reward (R_t): $2400.00
 
 Period 12 (Period_12) VM Action:
 ======================================================================
 {
-  "rationale": "World/demand: Recent periods show a sustained high-demand regime. Last 3 observed demands (P9\u2013P11) = 963, 863, 1136 \u2192 recent avg \u2248 987 units/period; periods 6\u20138 avg \u2248667 earlier. Use the higher recent average as demand forecast (~1,000 units/period) given upward trend and confirmed acceleration. Lead time: supplier promised 2 periods but observed variability (1\u20133); use conservative coverage for L+1 = 3 periods. Inventory/pipeline: on-hand=264 + in-transit=1860 = 2124 total. Target coverage = 3 \xd7 1000 = 3000. Shortfall \u2248 876. Ordering decision: round to a practical lot to cover shortfall and small safety buffer given lead-time variability and high profit per unit. Order 900 units.",
-  "carry_over_insight": "",
+  "rationale": "(a) Product: 'chips(Regular)'. No specific calendar dates, but demand is in an explosive growth phase. (b) Demand: Recent periods show 863, 1136, with an average of ~1000. Demand has scaled from ~100 to over 1100. (c) Lead Time: Promised L=2. P6 (450), P7 (760), P8 (750) are missing. P9 (600) arrived in P11 (L=2). This indicates a high risk of lost shipments for P6-P8, as they are 3-5 periods overdue. (d) Pipeline: On-hand is 0. In-transit is 4360, but at least 1960 (P6-P8) are likely lost. Active pipeline (P10-P11) is 2400 units. (e) Order Logic: To cover demand for P12, P13, and P14 (L+1 periods), I need approximately 3300-3600 units. With 0 on-hand and 2400 in active transit, I require 1200 more. To account for the high stockout frequency and continued growth, I will order 1400 units to build a safety buffer and restore availability.",
+  "carry_over_insight": "Supply chain failure confirmed: Orders from Period 6 (450 units), Period 7 (760 units), and Period 8 (750 units) are overdue by 3+ periods and are likely lost. Demand has peaked at 1136 units, establishing a new regime of 1000-1150 units per period.",
   "action": {
-    "chips(Regular)": 900
+    "chips(Regular)": 1400
   }
 }
 ======================================================================
@@ -257,17 +258,17 @@ Period 12 (Period_12) Demand: {
 }
 
 === Period 12 Summary ===
-chips(Regular): ordered=900, arrived=0, starting on-hand inventory=264, demand=1221, sold=264, ending on-hand inventory=0
-Daily Profit: $1056.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $1056.00
+chips(Regular): ordered=1400, arrived=1200 units (ordered on Period 10, lead_time was 2 periods), 1200 units (ordered on Period 11, lead_time was 1 periods), starting on-hand inventory=2400, demand=1221, sold=1221, ending on-hand inventory=1179
+Daily Profit: $4884.00, Daily Holding Cost: $1179.00
+Daily Reward (R_t): $3705.00
 
 Period 13 (Period_13) VM Action:
 ======================================================================
 {
-  "rationale": "World/product: chips(Regular) shows a sustained higher-demand regime (Periods 6\u201312) with recent demands P10=863, P11=1136, P12=1221 \u2014 use ~1,100\u20131,200 units/period forecast. Lead-time: concluded arrivals show variable lead-times (P9\u2192P11 = 2, P5\u2192P6 =1, P1\u2192P4 =3); no consistent new lead-time confirmed, so use promised L=2 but remain conservative. Inventory/pipeline: on-hand=0, in-transit=2760 (likely from P6=300, P7=860, P8=700, P12=900). Decision rule: ensure on-hand + in-transit + new order covers (L+1)=3 periods of demand. Target coverage = 3 * 1,100 = 3,300 units. Shortfall = 3,300 - 2,760 = 540 units. Balance holding cost ($1) vs lost-profit ($4): favor small safety buffer. Action chosen = 600 units to cover shortfall + small buffer.",
-  "carry_over_insight": "",
+  "rationale": "The demand for chips(Regular) has escalated significantly, reaching 1221 units in Period 12, confirming a new high-demand regime of 1200-1300 units per period. Historically, orders from P6 (450), P7 (760), and P8 (750) are effectively lost, as they are now 4-6 periods past the promised lead time of 2. Recent lead times for successfully arrived orders (P9, P10, P11) have stabilized at 1-2 periods. Currently, on-hand inventory is 1179. In-transit inventory consists of the P12 order (1400 units), as the P9-P11 orders have already arrived or were lost. To cover demand for the lead time plus the decision period (L+1 = 3 periods), I need approximately 3600-3900 units in the pipeline (3 * 1250). Total currently available (on-hand 1179 + in-transit 1400) is 2579. To reach a safe inventory position and account for the high demand trend, I will order 1300 units.",
+  "carry_over_insight": "Demand regime shift confirmed: Period 12 demand (1221) establishes a new regime of 1200-1300 units/period (over 10x historical samples). P6, P7, and P8 orders are confirmed lost.",
   "action": {
-    "chips(Regular)": 600
+    "chips(Regular)": 1300
   }
 }
 ======================================================================
@@ -278,17 +279,17 @@ Period 13 (Period_13) Demand: {
 }
 
 === Period 13 Summary ===
-chips(Regular): ordered=600, arrived=0, starting on-hand inventory=0, demand=1246, sold=0, ending on-hand inventory=0
-Daily Profit: $0.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $0.00
+chips(Regular): ordered=1300, arrived=0, starting on-hand inventory=1179, demand=1246, sold=1179, ending on-hand inventory=0
+Daily Profit: $4716.00, Daily Holding Cost: $0.00
+Daily Reward (R_t): $4716.00
 
 Period 14 (Period_14) VM Action:
 ======================================================================
 {
-  "rationale": "a) World/product: chips(Regular) is a nonseasonal snack; recent calendar not provided so rely on demand history. b) Demand regime: recent demands are very high (P11=1136, P12=1221, P13=1246) \u2014 new higher regime. c) Lead time/missing orders: supplier promised 2 but observed variability (examples: P1\u2192P4 lead_time=3; P3\u2192P4 LT=1; P9\u2192P11 LT=2). Some orders remain in-transit; no evidence of lost shipments. d) Inventory/pipeline: on-hand=0, in-transit=3360 units. Recent regime avg \u22481201 units/period (P11\u2013P13). Use planning horizon L+1=3 periods (promised LT=2). Required coverage = 1201*3 = 3603 units; current pipeline covers 3360; shortfall \u2248243 units. e) Order logic: place a small replenishment to cover the shortfall while limiting holding cost exposure given LT variability and high holding cost.",
-  "carry_over_insight": "Demand regime shift at Period 13: avg increased to \u22481201 units/period (Periods 11\u201313: 1136, 1221, 1246) vs prior accelerated regime \u2248667 units/period (earlier), \u2248+80%.",
+  "rationale": "The demand for chips(Regular) has stabilized in a very high regime, with Period 13 demand reaching 1,246 units. The new demand regime is estimated at 1,200\u20131,300 units per period. Regarding lead times and order fulfillment: orders from P6 (450), P7 (760), and P8 (750) are officially confirmed lost as they are now 5+ periods overdue. Excluding these lost orders, the active in-transit pipeline consists of P12 (1,400) and P13 (1,300), totaling 2,700 reliable units. My current on-hand inventory is 0. With a promised lead time (L) of 2, I need to cover demand for Period 14 (now), 15, and 16 (L+1 periods). Expected demand for 3 periods is ~3,750 units. Subtracting the reliable in-transit pipeline (2,700) from this target (3,750) leaves a deficit of 1,050 units. Given the high stockout cost and supply volatility, I will order 1,300 units to maintain service levels and account for potential further demand growth.",
+  "carry_over_insight": "P6, P7, and P8 orders (1,960 units total) are confirmed lost. Demand regime for P12-P13 is established at 1,200-1,300 units/period (avg 1,234).",
   "action": {
-    "chips(Regular)": 250
+    "chips(Regular)": 1300
   }
 }
 ======================================================================
@@ -299,17 +300,17 @@ Period 14 (Period_14) Demand: {
 }
 
 === Period 14 Summary ===
-chips(Regular): ordered=250, arrived=900 units (ordered on Period 12, lead_time was 2 periods), 600 units (ordered on Period 13, lead_time was 1 periods), starting on-hand inventory=1500, demand=1265, sold=1265, ending on-hand inventory=235
-Daily Profit: $5060.00, Daily Holding Cost: $235.00
-Daily Reward (R_t): $4825.00
+chips(Regular): ordered=1300, arrived=1400 units (ordered on Period 12, lead_time was 2 periods), 1300 units (ordered on Period 13, lead_time was 1 periods), starting on-hand inventory=2700, demand=1265, sold=1265, ending on-hand inventory=1435
+Daily Profit: $5060.00, Daily Holding Cost: $1435.00
+Daily Reward (R_t): $3625.00
 
 Period 15 (Period_15) VM Action:
 ======================================================================
 {
-  "rationale": "World knowledge & product: chips have no strong seasonal event now; use historical regime signals. Demand regime: recent periods (11\u201313) show sustained high demand \u22481201 units/period; treat this as current forecast. Lead time & pipeline: in-transit=2110 corresponds to orders from P6(300), P7(860), P8(700), P14(250). Observed lead times vary (1\u20133), but promised LT=2; do not assume imminent arrivals for all in-transit. Inventory need: target coverage = (L+1)=3 periods \xd7 forecast 1201 \u2248 3603 units. Current coverage = on-hand 235 + in-transit 2110 = 2345. Shortfall \u2248 3603\u22122345 = 1258. Action balances stockout risk (high margin $4) vs holding cost $1/period; order to cover shortfall with small rounding. ",
-  "carry_over_insight": "",
+  "rationale": "The demand regime has stabilized between 1,200 and 1,300 units per period (P12-P14 average: 1,244). World knowledge suggests 'chips(Regular)' is a high-volume staple; the rapid growth seen from P1-P13 has leveled off. Currently, on-hand inventory is 1,435. In-transit consists of orders from P14 (1,300 units) and potentially lost units from P6-P8 (1,960 units). Given that P9-P13 orders arrived with lead times of 1-2 periods, the P6-P8 orders are confirmed lost and should be discounted from the pipeline. To cover (L+1) = 3 periods of demand at a forecast of 1,300 units/period, I need a target pipeline of 3,900 units. Current reliable inventory (On-hand 1,435 + P14 In-transit 1,300) equals 2,735 units. Therefore, an order of 1,165 units is required to reach the target of 3,900. I will round this to 1,200 to maintain a slight buffer against demand volatility and potential shipment loss.",
+  "carry_over_insight": "Demand regime stabilized: P12-P14 demand avg 1,244 units/period. Reliable lead time for recent successful shipments is 1-2 periods.",
   "action": {
-    "chips(Regular)": 1260
+    "chips(Regular)": 1200
   }
 }
 ======================================================================
@@ -320,17 +321,17 @@ Period 15 (Period_15) Demand: {
 }
 
 === Period 15 Summary ===
-chips(Regular): ordered=1260, arrived=250 units (ordered on Period 14, lead_time was 1 periods), starting on-hand inventory=485, demand=1507, sold=485, ending on-hand inventory=0
-Daily Profit: $1940.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $1940.00
+chips(Regular): ordered=1200, arrived=1300 units (ordered on Period 14, lead_time was 1 periods), starting on-hand inventory=2735, demand=1507, sold=1507, ending on-hand inventory=1228
+Daily Profit: $6028.00, Daily Holding Cost: $1228.00
+Daily Reward (R_t): $4800.00
 
 Period 16 (Period_16) VM Action:
 ======================================================================
 {
-  "rationale": "a) World/product: chips(Regular) is snack SKU with historically large recent demand spikes; no calendar-specific info provided. b) Demand regime: recent periods show sustained high demand \u2014 Periods 11\u201313 avg \u22481201 (carry-over), recent actual demands P14=1265, P15=1507 \u2014 expect demand \u22481,300\u20131,400 units/period next periods. c) Lead time / missing orders: supplier promised LT=2 but observed variable actual LT (1\u20133). Several orders remain in-transit (total=3120) from P6(300), P7(860), P8(700), P15(1260). d) Inventory/pipeline: on-hand=0 + in-transit=3120. Using conservative service cover of (L+1)=3 periods of demand and target demand=1,350 => required coverage \u22484,050. Shortfall \u2248930. e) Order decision: order enough to cover ~3 periods given demand uncertainty but avoid excess holding cost. Place order=1,100 units to bring total pipeline closer to target while limiting holding risk.",
-  "carry_over_insight": "",
+  "rationale": "The demand for chips(Regular) has shown a continuous upward trend, peaking at 1,507 in Period 15, which is significantly higher than the previous Period 12-14 average of ~1,244. The current demand regime is now estimated at 1,400-1,550 units/period. The P6, P7, and P8 orders (total 1,960 units) are definitely lost and removed from pipeline considerations. Current in-transit units include Period 15's order (1,200). Lead times for successful shipments have stabilized at 1-2 periods. With a target of covering L+1 (3 periods) of demand (approx 1,500 * 3 = 4,500 units), and currently having 1,228 on-hand plus 1,200 in-transit (Total pipeline = 2,428), a significant order is required to prevent stockouts and keep pace with the high demand regime. I will order 2,000 units to reach a safe pipeline level of ~4,400 units.",
+  "carry_over_insight": "Demand regime shift confirmed: Period 15 demand (1,507) indicates a move into the 1,400-1,550 range, representing a ~20% increase over the P12-P14 average.",
   "action": {
-    "chips(Regular)": 1100
+    "chips(Regular)": 2000
   }
 }
 ======================================================================
@@ -341,17 +342,17 @@ Period 16 (Period_16) Demand: {
 }
 
 === Period 16 Summary ===
-chips(Regular): ordered=1100, arrived=0, starting on-hand inventory=0, demand=1547, sold=0, ending on-hand inventory=0
-Daily Profit: $0.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $0.00
+chips(Regular): ordered=2000, arrived=0, starting on-hand inventory=1228, demand=1547, sold=1228, ending on-hand inventory=0
+Daily Profit: $4912.00, Daily Holding Cost: $0.00
+Daily Reward (R_t): $4912.00
 
 Period 17 (Period_17) VM Action:
 ======================================================================
 {
-  "rationale": "World/demand: Recent periods show a sustained high regime since Period 11 (carry-over): recent demands P14\u2013P16 = 1265,1507,1547 and regime avg \u22481201 earlier; current short-term trend \u22481,450 units/period. Lead time & pipeline: promised LT=2 but observed LT variable (1\u20133); use promised LT for planning (L+1=3 periods). Inventory cover check: required cover = 3 * 1,450 \u2248 4,350 units. Current on-hand + in-transit = 0 + 4,220 = 4,220 \u2192 shortfall \u2248130 units. Decision logic: order enough to cover shortfall plus small safety given LT variability and risk of lost shipments, but avoid excess holding cost ($1/unit/period) vs profit ($4/unit sold). Place a conservative replenishment to eliminate shortfall and provide modest safety buffer.",
-  "carry_over_insight": "",
+  "rationale": "The demand for chips(Regular) has entered a new high-growth regime. Period 15 (1,507) and Period 16 (1,547) show demand has stabilized in the 1,500-1,600 range, significantly higher than the previous 1,200-1,300 regime. We ended Period 16 with 0 on-hand inventory. The 'In-transit' total is 5,160 units, consisting of orders from P15 (1,200), P16 (2,000), and likely residual lost orders from P6-P8 (1,960 units). Using the inferred lead time of 1-2 periods, the P15 order (1,200) and P16 order (2,000) are the only reliable upcoming arrivals. Since P15 did not arrive in P16, it is highly likely to arrive in P17 along with a possible partial arrival of P16. To cover the next 3 periods (L+1) at a projected 1,600 units/period (total 4,800), and accounting for the 3,200 units of reliable pipeline (1,200+2,000), I need to order enough to bridge the gap and build a safety buffer against the ongoing high-demand volatility and the zero on-hand status.",
+  "carry_over_insight": "Demand regime shift confirmed: Period 16 demand (1,547) confirms a new range of 1,500-1,600 units/period, a ~25% increase over the P12-P14 average.",
   "action": {
-    "chips(Regular)": 200
+    "chips(Regular)": 2000
   }
 }
 ======================================================================
@@ -362,17 +363,17 @@ Period 17 (Period_17) Demand: {
 }
 
 === Period 17 Summary ===
-chips(Regular): ordered=200, arrived=0, starting on-hand inventory=0, demand=1724, sold=0, ending on-hand inventory=0
+chips(Regular): ordered=2000, arrived=0, starting on-hand inventory=0, demand=1724, sold=0, ending on-hand inventory=0
 Daily Profit: $0.00, Daily Holding Cost: $0.00
 Daily Reward (R_t): $0.00
 
 Period 18 (Period_18) VM Action:
 ======================================================================
 {
-  "rationale": "World knowledge & product: snack chips have steady demand; recent history shows large, sustained upward shifts. Demand analysis: recent demands P15\u2013P17 = 1507, 1547, 1724 -> avg \u22481593 units/period, up ~32.6% vs prior regime (Periods 11\u201313 avg \u22481201). Use this as current demand forecast (~1,600/day). Lead time & pipeline: supplier promised L=2. Concluded arrivals show variable actual LT (1\u20133 historically) but recent behaviour includes 1\u20132 period arrivals; in-transit=4420 likely includes multiple outstanding orders (some will arrive within the next 1\u20132 periods). Inventory assessment: on-hand=0, in-transit=4420. Coverage target: order + on-hand + in-transit should cover (L+1)=3 periods of demand \u22483\xd71,600=4,800 units. Shortfall \u22484,800\u22124,420=~380 units. Decision logic: place a modest replenishment to cover the ~380 shortfall plus a small buffer against late/lost shipments while avoiding excessive holding cost. Order 400 units.",
-  "carry_over_insight": "Demand regime shift at Period 15: avg demand increased to \u22481,593 units/period (Periods 15\u201317: 1507, 1547, 1724) vs prior regime \u22481,201 units/period (Periods 11\u201313), +32.6%.",
+  "rationale": "The demand for chips(Regular) has shown another significant upward shift, with Period 17 demand reaching 1,724 units. This follows a trend from the 1,500-1,600 range in P15-P16, suggesting a new regime of approximately 1,600-1,800 units per period. Regarding lead times, the 'conclude' messages for P16 and P17 show no arrivals, but this is consistent with the established 1-2 period lead time pattern (P15 order of 1,200 is expected in P16/P17, and P16 order of 2,000 is expected in P17/P18). Specifically, since P17 conclude showed 0 arrivals, I expect the P15 (1,200) and potentially P16 (2,000) orders to arrive during P18. Currently, on-hand inventory is 0. My pipeline (In-transit) is 7,160 units (comprising orders from P15: 1,200, P16: 2,000, and P17: 2,000, plus older lost orders). Excluding the 1,960 units confirmed lost from P6-P8, the 'active' pipeline is 5,200 units. To cover (L+1) periods of demand (estimated at 1,750 units/period) for a lead time of 2, I need approximately 5,250 units (1,750 * 3). My active pipeline of 5,200 is nearly sufficient, but with the rapid growth trend, I will order 2,000 units to ensure availability for the expanding demand and provide a safety buffer against lead time variability.",
+  "carry_over_insight": "Demand regime shift confirmed: Period 17 demand (1,724) indicates a move into the 1,650-1,800 range, continuing the rapid upward trajectory (approx. 15x historical average).",
   "action": {
-    "chips(Regular)": 400
+    "chips(Regular)": 2000
   }
 }
 ======================================================================
@@ -383,17 +384,17 @@ Period 18 (Period_18) Demand: {
 }
 
 === Period 18 Summary ===
-chips(Regular): ordered=400, arrived=1260 units (ordered on Period 15, lead_time was 3 periods), 1100 units (ordered on Period 16, lead_time was 2 periods), starting on-hand inventory=2360, demand=1802, sold=1802, ending on-hand inventory=558
-Daily Profit: $7208.00, Daily Holding Cost: $558.00
-Daily Reward (R_t): $6650.00
+chips(Regular): ordered=2000, arrived=1200 units (ordered on Period 15, lead_time was 3 periods), 2000 units (ordered on Period 16, lead_time was 2 periods), starting on-hand inventory=3200, demand=1802, sold=1802, ending on-hand inventory=1398
+Daily Profit: $7208.00, Daily Holding Cost: $1398.00
+Daily Reward (R_t): $5810.00
 
 Period 19 (Period_19) VM Action:
 ======================================================================
 {
-  "rationale": "World & product: chips are non-seasonal; recent history shows a sustained high-demand regime. Demand analysis: recent demands (P15\u2013P18) = 1507, 1547, 1724, 1802 \u2192 recent mean \u22481645 units/period; use this as forecast for next periods. Lead time & pipeline: promised LT=2 but observed actual LT has varied (1\u20133); recent evidence includes orders with LT=2\u20133, so assume up-to-3 variability and plan for L+1=3 periods of coverage. Coverage target = 3 \xd7 1645 \u2248 4935 units. Current supply = on-hand 558 + in-transit 2460 = 3018 units. Shortfall \u2248 4935 \u2212 3018 = 1917 units. Tradeoff: profit $4 vs holding $1 \u2192 ordering to cover the 3-period expected demand maximizes expected reward while limiting excess stock. Order 1917 units.",
-  "carry_over_insight": "",
+  "rationale": "The demand for 'chips(Regular)' continues its aggressive upward trend, with Period 18 demand reaching 1,802 units (approximately 16x the historical average). The recent growth rate suggests Period 19 demand will be ~1,950 units, Period 20 ~2,100, and Period 21 ~2,250. To maximize profit and avoid stockouts, I must maintain an inventory pipeline (On-hand + Effective In-transit) sufficient to cover the lead time plus the current period (L+1 = 3 periods). Current On-hand is 1,398. The 'In-transit' of 5,960 includes 1,960 units from Periods 6, 7, and 8 that are confirmed lost. Thus, effective In-transit consists of orders from P17 (2,000) and P18 (2,000), totaling 4,000. Total reliable stock is 1,398 + 4,000 = 5,398. My requirement for P19-P21 is approximately 6,300 units. To cover this deficit and build a safety buffer against lead-time volatility (which has fluctuated between 1 and 3 periods), I will place an order for 2,500 units.",
+  "carry_over_insight": "Demand regime shift confirmed: Period 18 demand (1,802) continues the rapid upward trajectory, now approximately 16x historical samples. Estimated demand for the upcoming window (P19-P21) is 1,900-2,300 units per period.",
   "action": {
-    "chips(Regular)": 1917
+    "chips(Regular)": 2500
   }
 }
 ======================================================================
@@ -404,17 +405,17 @@ Period 19 (Period_19) Demand: {
 }
 
 === Period 19 Summary ===
-chips(Regular): ordered=1917, arrived=0, starting on-hand inventory=558, demand=2075, sold=558, ending on-hand inventory=0
-Daily Profit: $2232.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $2232.00
+chips(Regular): ordered=2500, arrived=0, starting on-hand inventory=1398, demand=2075, sold=1398, ending on-hand inventory=0
+Daily Profit: $5592.00, Daily Holding Cost: $0.00
+Daily Reward (R_t): $5592.00
 
 Period 20 (Period_20) VM Action:
 ======================================================================
 {
-  "rationale": "World & demand: Recent periods show a sustained high-demand regime \u2014 P16\u2013P19 demands = 1547, 1724, 1802, 2075 (avg \u22481787 units/period). Lead-time evidence: arrivals vary (observed lead times = 1,2,3 across different orders); no consistent 3+ period shift, so treat promised LT=2 as uncertain but intermittent LT=3 has occurred. Inventory/pipeline: on-hand=0, in-transit=4377. Decision logic: to be robust to occasional 3-period realizations, plan coverage for L+1=4 periods of demand. Forecast demand per period \u22481787 \u2192 4-period requirement \u22487148 units. Subtract current pipeline 4377 \u2192 net order \u22482771 units. This balances avoiding stockouts in a high-demand regime while limiting excess holding given $1/period holding vs $4 profit.",
-  "carry_over_insight": "",
+  "rationale": "The demand for 'chips(Regular)' continues its explosive growth, reaching 2,075 units in Period 19. The current demand regime is trending towards 2,100-2,400 units per period. The supply chain remains volatile, with actual lead times observed between 1 and 3 periods. As of the start of Period 20, on-hand inventory is 0. The in-transit pipeline (8,460 units) consists of orders from P17 (2,000), P18 (2,000), and P19 (2,500), totaling 6,500 units, plus 1,960 units from P6-P8 which are confirmed lost. Therefore, the active pipeline is 6,500 units. To cover the next three periods (P20, P21, P22) at an estimated average demand of 2,300 units/period, I need approximately 6,900 units. With 0 on-hand and 6,500 in active transit, I am slightly under-provisioned against the rising trend. I will order 2,800 units to account for the increasing demand slope and provide a safety buffer against potential lead-time delays or lost shipments.",
+  "carry_over_insight": "Demand regime shift confirmed: Period 19 demand (2,075) marks a move into the 2,000-2,300 range (approx. 18x historical samples). Active pipeline excluding lost orders (P6-P8) is 6,500 units as of P20.",
   "action": {
-    "chips(Regular)": 2771
+    "chips(Regular)": 2800
   }
 }
 ======================================================================
@@ -425,17 +426,17 @@ Period 20 (Period_20) Demand: {
 }
 
 === Period 20 Summary ===
-chips(Regular): ordered=2771, arrived=400 units (ordered on Period 18, lead_time was 2 periods), 1917 units (ordered on Period 19, lead_time was 1 periods), starting on-hand inventory=2317, demand=1973, sold=1973, ending on-hand inventory=344
-Daily Profit: $7892.00, Daily Holding Cost: $344.00
-Daily Reward (R_t): $7548.00
+chips(Regular): ordered=2800, arrived=2000 units (ordered on Period 18, lead_time was 2 periods), 2500 units (ordered on Period 19, lead_time was 1 periods), starting on-hand inventory=4500, demand=1973, sold=1973, ending on-hand inventory=2527
+Daily Profit: $7892.00, Daily Holding Cost: $2527.00
+Daily Reward (R_t): $5365.00
 
 Period 21 (Period_21) VM Action:
 ======================================================================
 {
-  "rationale": "Recent demand regime: Periods 17\u201320 show true demand \u22481724,1802,2075,1973 \u2192 recent average \u22481893 units/period. Observed actual lead times vary 1\u20133 periods (evidence: P15\u2192P18 =3, P16\u2192P18 =2, P19\u2192P20 =1, P18\u2192P20 =2); promised=2 but occasional 3. Decision horizon requires covering (L+1) periods; using L=2 (typical) implies target coverage \u22483\xd71893\u22485679 units. Current coverage = on-hand (344) + in-transit (4831) = 5175, short by ~504. To avoid stockouts while limiting holding cost ($1/unit/period vs $4 profit), place a moderate replenishment to close the gap and provide minimal safety stock. Order 600 units.",
-  "carry_over_insight": "",
+  "rationale": "The demand for 'chips(Regular)' continues its significant upward trajectory, though Period 20 showed a slight stabilization/dip to 1,973 units compared to P19's 2,075. The current demand regime is established at 2,000-2,300 units per period. Lead times fluctuate between 1 and 3 periods, with recent arrivals (P18, P19) showing 1-2 period delivery. As of Period 21 START, on-hand inventory is 2,527 units. In-transit inventory is 6,760 units, which includes the lost orders from Periods 6, 7, and 8 (450+760+750 = 1,960 units). Therefore, the 'active' pipeline is 4,800 units (Orders from P17 and P20). My goal is to cover demand for the lead time plus the current period (L+1 = 3 periods). Total demand for P21-P23 is estimated at 6,300-6,900 units. Total active inventory (On-hand 2,527 + P17 active in-transit 2,000 + P20 active in-transit 2,800) equals 7,327 units. This level is sufficient to cover the immediate window. However, to maintain the buffer against the consistent growth trend and potential shipment losses, I will place a moderate order to keep the pipeline moving without incurring excessive holding costs, especially since on-hand inventory is currently positive.",
+  "carry_over_insight": "Demand regime stabilized in the 2,000-2,300 units/period range (approx. 18-20x historical average). Active pipeline calculation must strictly exclude 1,960 units from lost orders (P6, P7, P8).",
   "action": {
-    "chips(Regular)": 600
+    "chips(Regular)": 2200
   }
 }
 ======================================================================
@@ -446,17 +447,17 @@ Period 21 (Period_21) Demand: {
 }
 
 === Period 21 Summary ===
-chips(Regular): ordered=600, arrived=0, starting on-hand inventory=344, demand=1983, sold=344, ending on-hand inventory=0
-Daily Profit: $1376.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $1376.00
+chips(Regular): ordered=2200, arrived=0, starting on-hand inventory=2527, demand=1983, sold=1983, ending on-hand inventory=544
+Daily Profit: $7932.00, Daily Holding Cost: $544.00
+Daily Reward (R_t): $7388.00
 
 Period 22 (Period_22) VM Action:
 ======================================================================
 {
-  "rationale": "a) World/product: snack chips\u2014no calendar events noted; demand driven by observed history. b) Demand regime: recent periods show sustained high demand ~2,000 units/period (P19=2075, P20=1973, P21=1983) \u2014 treat current expected demand \u22482,000/unit. c) Lead time / arrivals: concluded history shows variable actual lead times (1\u20133 periods) but no sustained confirmed change; assume promised L=2 but allow variance. d) Inventory & pipeline: on-hand=0, in-transit=5431. Need to cover (L+1)=3 periods of demand (current period demand occurs after decision) \u2192 required \u22483\xd72,000=6,000 units. Pipeline shortfall \u22486,000\u22125,431=569 units. e) Order logic: place a moderate top-up to cover estimated 3-period demand shortfall while avoiding excess holding cost. Order 600 units.",
-  "carry_over_insight": "",
+  "rationale": "The demand for chips(Regular) has stabilized over the last three periods (P19-P21) in the range of 1,970 to 2,075 units, averaging approximately 2,010 units per period. This suggests the rapid exponential growth seen between P10 and P19 has plateaued. The promised lead time is 2 periods, but actual lead times fluctuate between 1 and 3 periods. To ensure a 95%+ service level across a 3-period window (Period 22-24), I calculate the target inventory as Demand_forecast * (L+1) + Safety_Stock. With a forecast of ~2,050 units, the 3-period requirement is 6,150 units. Pipeline analysis: Total In-transit is 8,960. However, 1,960 units from P6, P7, and P8 are confirmed lost. Active In-transit (P17, P20, P21) = 8,960 - 1,960 = 7,000 units. On-hand is 544. Total active position = 7,544 units. Since the current active position (7,544) already covers the 3-period demand (6,150) with a healthy buffer of ~1,400 units, a smaller maintenance order is appropriate to account for potential shipment volatility and to keep the pipeline moving without incurring excessive holding costs.",
+  "carry_over_insight": "Demand regime has stabilized: P19-P21 demand averages 2,010 units/period, ending the rapid growth trend. Active pipeline calculation must continue to exclude 1,960 units from P6-P8 lost orders.",
   "action": {
-    "chips(Regular)": 600
+    "chips(Regular)": 1000
   }
 }
 ======================================================================
@@ -467,17 +468,17 @@ Period 22 (Period_22) Demand: {
 }
 
 === Period 22 Summary ===
-chips(Regular): ordered=600, arrived=2771 units (ordered on Period 20, lead_time was 2 periods), starting on-hand inventory=2771, demand=2221, sold=2221, ending on-hand inventory=550
-Daily Profit: $8884.00, Daily Holding Cost: $550.00
-Daily Reward (R_t): $8334.00
+chips(Regular): ordered=1000, arrived=2800 units (ordered on Period 20, lead_time was 2 periods), starting on-hand inventory=3344, demand=2221, sold=2221, ending on-hand inventory=1123
+Daily Profit: $8884.00, Daily Holding Cost: $1123.00
+Daily Reward (R_t): $7761.00
 
 Period 23 (Period_23) VM Action:
 ======================================================================
 {
-  "rationale": "World knowledge & product: chips have no calendar spikes now. Recent demand regime: Periods 19\u201322 demands = 2075, 1973, 1983, 2221 => recent average \u22482063 units/period. Lead-time inference: concluded arrivals show frequent 2-period actual lead time (Period 20 and 22 arrivals consistent with 2), so use L=2. Decision timing: must cover L+1=3 periods of demand (current period demand occurs after decision). Target coverage = 2063\xd73 \u2248 6189 units. Inventory position = on-hand 550 + in-transit 3260 = 3810. Order = target \u2212 position = 6189 \u2212 3810 \u2248 2379. Round to whole unit and avoid negative orders.",
+  "rationale": "The demand for chips(Regular) has stabilized over the last four periods (P19-P22) with an average of approximately 2,063 units per period (P19: 2075, P20: 1973, P21: 1983, P22: 2221). The rapid growth observed previously has plateaued. The current on-hand inventory is 1,123. To calculate the active pipeline, we take the total in-transit (7,160) and subtract the confirmed lost orders from P6, P7, and P8 (450 + 760 + 750 = 1,960), resulting in an active pipeline of 5,200 units. These are the orders from P17 (2,000), P21 (2,200), and P22 (1,000). Note that the P17 order (2,000 units) is now 5 periods old and has not arrived; however, since lead times have fluctuated up to 3 periods recently, it is not yet officially 'lost' but is highly suspect. The total system inventory (On-hand 1,123 + Active Pipeline 5,200) equals 6,323 units. With an expected demand of ~2,100 per period and a 2-period lead time (L+1 = 3 periods of coverage needed), the target inventory is roughly 6,300. Since current stock levels are nearly exactly at this requirement, I will place a maintenance order of 1,000 units to ensure future coverage and hedge against the potential loss of the P17 shipment.",
   "carry_over_insight": "",
   "action": {
-    "chips(Regular)": 2379
+    "chips(Regular)": 1000
   }
 }
 ======================================================================
@@ -488,17 +489,17 @@ Period 23 (Period_23) Demand: {
 }
 
 === Period 23 Summary ===
-chips(Regular): ordered=2379, arrived=0, starting on-hand inventory=550, demand=2326, sold=550, ending on-hand inventory=0
-Daily Profit: $2200.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $2200.00
+chips(Regular): ordered=1000, arrived=0, starting on-hand inventory=1123, demand=2326, sold=1123, ending on-hand inventory=0
+Daily Profit: $4492.00, Daily Holding Cost: $0.00
+Daily Reward (R_t): $4492.00
 
 Period 24 (Period_24) VM Action:
 ======================================================================
 {
-  "rationale": "a) World/product: chips(Regular) is non-seasonal; recent history shows sustained high-demand regime (~2.0\u20132.3k units/period). b) Demand regime: last three periods demands = P21:1983, P22:2221, P23:2326; 3-period avg \u22482,176 units/period. c) Lead time / pipeline: supplier promised LT=2 but observed LT has varied (1\u20133); some variability and occasional long LT, so be conservative. d) Inventory assessment: on-hand=0, in-transit=5,639. Using (L+1)=3 periods coverage target = 3 * 2,176 \u2248 6,528 units; shortfall \u2248 6,528 \u2212 5,639 = 889 units. e) Order logic: place enough to cover 3 periods of expected demand given LT uncertainty while avoiding excessive holding cost. Rounding to a practical integer, I order 900 units.",
-  "carry_over_insight": "",
+  "rationale": "The demand for chips(Regular) has stabilized at a high-demand regime of approximately 2,000 to 2,300 units per period (P21-P23 average: 2,176). The product is 'chips(Regular)', a staple snack, suggesting consistent consumption patterns now that the growth trend has leveled. Inventory is currently 0, and lead times typically fluctuate between 1 and 2 periods. The total in-transit pipeline is 8,160 units. However, we must account for lost inventory: the orders from Period 6 (450), Period 7 (760), and Period 8 (750) totaling 1,960 units are confirmed lost. Additionally, the Period 17 order (2,000 units) is now 6 periods old (P23 conclude showed no arrival for it), suggesting it may also be lost or significantly delayed. Excluding the 1,960 confirmed lost units and being cautious about the 2,000 units from P17, the 'effective' pipeline is 8,160 - 1,960 - 2,000 = 4,200 units (representing orders from P21, P22, and P23). To cover (L+1) periods of demand (3 periods * ~2,250 = 6,750 units) while accounting for the current stockout and the high probability that the P17 shipment is lost, I will place a substantial order of 2,600 units to restore the safety buffer and meet immediate future demand.",
+  "carry_over_insight": "Supply chain failure update: Period 17 order (2,000 units) is now 6 periods overdue and likely lost, joining the previously confirmed lost orders from P6-P8 (1,960 units). Effective pipeline should exclude these 3,960 units.",
   "action": {
-    "chips(Regular)": 900
+    "chips(Regular)": 2600
   }
 }
 ======================================================================
@@ -509,17 +510,17 @@ Period 24 (Period_24) Demand: {
 }
 
 === Period 24 Summary ===
-chips(Regular): ordered=900, arrived=600 units (ordered on Period 21, lead_time was 3 periods), starting on-hand inventory=600, demand=2566, sold=600, ending on-hand inventory=0
-Daily Profit: $2400.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $2400.00
+chips(Regular): ordered=2600, arrived=2200 units (ordered on Period 21, lead_time was 3 periods), starting on-hand inventory=2200, demand=2566, sold=2200, ending on-hand inventory=0
+Daily Profit: $8800.00, Daily Holding Cost: $0.00
+Daily Reward (R_t): $8800.00
 
 Period 25 (Period_25) VM Action:
 ======================================================================
 {
-  "rationale": "World/calendar: none provided. Product: chips(Regular) is a staple snack\u2014recent history drives forecast. Demand analysis: recent demands (P19\u2013P24) = [2075,1973,1983,2221,2326,2566], avg \u22482190 units/period \u2014 a clear sustained uplift vs prior regime (~1593 avg P15\u2013P17). Lead-time assessment: supplier promised 2 periods; concluded arrivals show mixed lead times but 2 periods is commonly observed recently (e.g., P9\u2192P11, P12\u2192P14, P16\u2192P18, P20\u2192P22); use L=2 for planning. Inventory/pipeline: on-hand=0, in-transit=5939. Decision logic: target pipeline cover = (L+1)=3 periods \xd7 forecast demand \u22483\xd72190=6570 units. Order needed = target \u2212 (on-hand+in-transit) = 6570\u22125939 = 631 units. This balances service level against $1/period holding cost and uncertain lead time; small buffer already exists in pipeline.",
-  "carry_over_insight": "Demand regime shift at Period 19: avg increased to \u22482190 units/period (Periods 19\u201324) vs prior regime \u22481593 units/period (Periods 15\u201317), +\u224837.5%.",
+  "rationale": "The demand for chips(Regular) has continued its upward trajectory, reaching 2,566 units in Period 24. While the growth had previously appeared to stabilize around 2,000-2,300, the last three periods (P22-P24) show an average of ~2,371, with P24 peaking significantly. The inventory currently sits at 0 on-hand. In-transit units total 8,560, but we must account for confirmed or likely lost orders. Orders from P6 (450), P7 (760), P8 (750), and now P17 (2,000) are significantly overdue (P17 is now 7 periods past its order date), totaling 3,960 lost units. This leaves an effective pipeline of 4,600 units (Orders from P22: 1,000; P23: 1,000; P24: 2,600). The target inventory for the next 3 periods (L+1), assuming a continued demand regime of ~2,600 units/period, is 7,800 units. With 4,600 units in the effective pipeline and 0 on-hand, an order of 3,200 is required to cover the forecasted demand and rebuild a safety buffer.",
+  "carry_over_insight": "Demand regime shift confirmed: Period 24 demand (2,566) indicates a further increase, establishing a new range of 2,400-2,600 units/period. Total confirmed/likely lost units: 3,960 (from Periods 6, 7, 8, and 17). Effective pipeline for inventory planning should exclude these quantities.",
   "action": {
-    "chips(Regular)": 631
+    "chips(Regular)": 3200
   }
 }
 ======================================================================
@@ -530,17 +531,17 @@ Period 25 (Period_25) Demand: {
 }
 
 === Period 25 Summary ===
-chips(Regular): ordered=631, arrived=600 units (ordered on Period 22, lead_time was 3 periods), 900 units (ordered on Period 24, lead_time was 1 periods), starting on-hand inventory=1500, demand=2604, sold=1500, ending on-hand inventory=0
-Daily Profit: $6000.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $6000.00
+chips(Regular): ordered=3200, arrived=1000 units (ordered on Period 22, lead_time was 3 periods), 2600 units (ordered on Period 24, lead_time was 1 periods), starting on-hand inventory=3600, demand=2604, sold=2604, ending on-hand inventory=996
+Daily Profit: $10416.00, Daily Holding Cost: $996.00
+Daily Reward (R_t): $9420.00
 
 Period 26 (Period_26) VM Action:
 ======================================================================
 {
-  "rationale": "World + product: chips are non-seasonal; recent history shows a sustained high-demand regime. Demand analysis: recent demands (P19\u2013P25) = [2075,1973,1983,2221,2326,2566,2604] => recent trend \u22482,400\u20132,600 units/period; use forecast = 2,500 units/period. Lead-time vs missing orders: promised L=2 but observed variable (1\u20133); treat L=2 for planning while acknowledging occasional 3-period delays. Inventory & pipeline: on-hand=0, in-transit=5,070. Decision logic: order to cover (L+1)=3 periods of demand = 3*2,500 = 7,500 units total pipeline target. Shortfall = 7,500 - (0 + 5,070) = 2,430. Place order ~2,430 units to bring pipeline to target while limiting holding cost exposure given profit $4/unit and holding $1/unit/period.",
-  "carry_over_insight": "",
+  "rationale": "The demand for chips(Regular) has entered a new regime, with the most recent data (P24-P25) showing demand between 2,566 and 2,604 units. This is a significant increase from the previous stabilization point of ~2,000 units. Based on this upward trend and the high variability observed throughout the history, I am forecasting demand for the upcoming lead-time window (P26-P28) to be in the range of 2,600-2,800 units per period. The supply chain remains volatile: while P24 arrived in 1 period, P21 and P22 took 3 periods, and P17 is officially considered lost (joining P6, P7, and P8). Current inventory status: On-hand is 996. The 'In-transit' figure is 8,160. From this, I subtract confirmed lost orders: P6 (450), P7 (760), P8 (750), and P17 (2,000), totaling 3,960 units. This leaves an effective pipeline of 4,200 units (P23: 1,000; P25: 3,200). To cover demand for P26, P27, and P28 (approx. 8,100 units total) while maintaining a safety buffer against lead-time drift, I need a total inventory position (On-hand + Effective In-transit + New Order) of approximately 10,000 units. New order = 10,000 - 996 - 4,200 = 4,804. I will round this to 4,800 to aggressively protect against stockouts during this high-growth phase.",
+  "carry_over_insight": "Demand regime shift confirmed: Period 24-25 demand (avg 2,585) established a new baseline of 2,500-2,700 units/period. Total confirmed lost units now 3,960 (Periods 6, 7, 8, and 17). Effective pipeline calculations must exclude these lost units to avoid chronic under-ordering.",
   "action": {
-    "chips(Regular)": 2430
+    "chips(Regular)": 4800
   }
 }
 ======================================================================
@@ -551,17 +552,17 @@ Period 26 (Period_26) Demand: {
 }
 
 === Period 26 Summary ===
-chips(Regular): ordered=2430, arrived=2379 units (ordered on Period 23, lead_time was 3 periods), 631 units (ordered on Period 25, lead_time was 1 periods), starting on-hand inventory=3010, demand=2645, sold=2645, ending on-hand inventory=365
-Daily Profit: $10580.00, Daily Holding Cost: $365.00
-Daily Reward (R_t): $10215.00
+chips(Regular): ordered=4800, arrived=1000 units (ordered on Period 23, lead_time was 3 periods), 3200 units (ordered on Period 25, lead_time was 1 periods), starting on-hand inventory=5196, demand=2645, sold=2645, ending on-hand inventory=2551
+Daily Profit: $10580.00, Daily Holding Cost: $2551.00
+Daily Reward (R_t): $8029.00
 
 Period 27 (Period_27) VM Action:
 ======================================================================
 {
-  "rationale": "World + demand: recent 3-period demand (P24\u2013P26) averages \u22482,605 units/period, higher than earlier regimes. Lead-time evidence remains variable (observed 1\u20133 periods); no sustained lead-time change. Inventory/pipeline: on-hand=365, in-transit=4,490 \u2192 total pipeline=4,855. Risk policy: promised lead_time=2 \u2192 need coverage for (L+1)=3 periods of demand (current forecast 2,605\xd73\u22487,815). Shortfall \u22487,815\u22124,855=2,960. Order decision balances service vs holding cost by replenishing the shortfall to cover 3 periods.",
-  "carry_over_insight": "",
+  "rationale": "The demand for 'chips(Regular)' continues its upward trend, with the P24-P26 average reaching ~2,605 units/period, roughly 23x the historical baseline. Lead times remain erratic (1-3 periods). As of Period 27, on-hand inventory is 2,551 units. The total in-transit pipeline is 8,760 units. However, identifying 'lost' shipments is critical for the pipeline calculation: orders from P6 (450), P7 (760), P8 (750), and P17 (2,000) are significantly overdue and confirmed/highly likely lost (total 3,960 units). Subtracting these from the reported in-transit (8,760 - 3,960) leaves an effective pipeline of 4,800 units, which consists solely of the P26 order. My inventory target for an (L+1) period window (covering P27, P28, and P29) using an estimated demand of 2,750 units/period and a safety buffer for lead time volatility is approximately 8,500 units. Current effective position (On-hand 2,551 + Effective Pipeline 4,800) is 7,351 units. To reach the target and protect against the accelerating demand and potential shipment losses, I will order 1,200 units.",
+  "carry_over_insight": "Demand regime shift confirmed: P24-P26 average (2,605) indicates a new baseline of 2,550-2,700 units/period. Total confirmed/likely lost units now 3,960 (P6, P7, P8, and P17). Effective pipeline calculations must exclude these to prevent persistent stockouts.",
   "action": {
-    "chips(Regular)": 2960
+    "chips(Regular)": 1200
   }
 }
 ======================================================================
@@ -572,17 +573,17 @@ Period 27 (Period_27) Demand: {
 }
 
 === Period 27 Summary ===
-chips(Regular): ordered=2960, arrived=0, starting on-hand inventory=365, demand=2890, sold=365, ending on-hand inventory=0
-Daily Profit: $1460.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $1460.00
+chips(Regular): ordered=1200, arrived=0, starting on-hand inventory=2551, demand=2890, sold=2551, ending on-hand inventory=0
+Daily Profit: $10204.00, Daily Holding Cost: $0.00
+Daily Reward (R_t): $10204.00
 
 Period 28 (Period_28) VM Action:
 ======================================================================
 {
-  "rationale": "World/demand: Recent periods show a high-demand regime \u2014 last three demands P25\u2013P27 = 2604, 2645, 2890 -> recent 3-period avg \u22482713 units/period. Use this as short-term forecast. Lead time & pipeline: Promised lead time = 2. On-hand = 0, in-transit = 7450. With L=2 you must cover (L+1)=3 periods of demand after ordering. Required coverage = 3 * 2713 \u2248 8139 units. Current coverage (on-hand + in-transit) = 7450 -> shortfall \u2248 689 units. Risk: supplier lead times have varied but recent arrivals suggest many shipments do arrive; lost-order risk exists but no sustained evidence of loss. Inventory cost tradeoff: profit $4/unit vs holding $1/unit/period \u2014 avoid large overstock. Action logic: order enough to cover the ~3-period shortfall but not much more to limit holding cost. Recommended order = 700 units.",
-  "carry_over_insight": "",
+  "rationale": "The demand for chips(Regular) has continued its upward climb, with the most recent demand at 2,890 units. The average demand for the last three periods (P25-P27) is approximately 2,713 units. We are currently stock-out with 0 on-hand inventory. The 'In-transit' total is 9,960 units. However, we must strictly exclude confirmed lost orders from P6 (450), P7 (760), P8 (750), and P17 (2,000), totaling 3,960 units. This leaves an effective pipeline of 6,000 units (9,960 - 3,960). The effective pipeline consists of orders from P26 (4,800) and P27 (1,200). Given a lead time (L) of 2 periods, we need to cover demand for (L+1) = 3 periods. Estimated demand for the next 3 periods is approximately 8,100 - 8,700 units (using ~2,700-2,900 per period). Current effective pipeline (6,000) + On-hand (0) = 6,000 units. To reach a target coverage of 8,700 units, an order of 2,700 units is required. This aggressive order accounts for the continuing growth trend and provides a buffer against the demonstrated supply chain instability.",
+  "carry_over_insight": "Demand regime shift confirmed: Period 27 demand (2,890) marks a new high, bringing the P25-P27 average to 2,713 units/period (a ~4% increase over the previous P24-P26 baseline). Effective pipeline must continue to exclude 3,960 units from lost orders (P6, P7, P8, P17).",
   "action": {
-    "chips(Regular)": 700
+    "chips(Regular)": 2700
   }
 }
 ======================================================================
@@ -593,17 +594,17 @@ Period 28 (Period_28) Demand: {
 }
 
 === Period 28 Summary ===
-chips(Regular): ordered=700, arrived=0, starting on-hand inventory=0, demand=2643, sold=0, ending on-hand inventory=0
+chips(Regular): ordered=2700, arrived=0, starting on-hand inventory=0, demand=2643, sold=0, ending on-hand inventory=0
 Daily Profit: $0.00, Daily Holding Cost: $0.00
 Daily Reward (R_t): $0.00
 
 Period 29 (Period_29) VM Action:
 ======================================================================
 {
-  "rationale": "World + product: chips are non-seasonal; recent history shows a sustained high-demand regime. Demand analysis: recent demands P26\u2013P28 = 2645, 2890, 2643 -> avg \u22482726 units/period; prior carry-over notes indicate elevated regime (~2190-> higher). Lead-time / pipeline: concluded history shows variable actual lead times (1\u20133 periods) so arrivals are noisy, but current in-transit = 8150 units \u2014 large relative to expected single-period demand (~2726) and enough to cover ~3 periods at current demand. Inventory assessment: on-hand = 0, in-transit provides substantial coverage; placing new order risks extra holding cost ($1/unit/period) for inventory we likely won't need immediately. Decision logic: with a large in-transit pipeline and uncertain but observed arrivals, do not place additional orders this period to avoid unnecessary holding cost while preserving service from pipeline.",
-  "carry_over_insight": "",
+  "rationale": "The demand for chips(Regular) has settled into a high-demand regime of approximately 2,600-2,900 units per period (P27: 2,890, P28: 2,643). Despite being 'Regular' chips, the demand has ballooned to over 25x the historical baseline (111). The supply chain remains extremely unreliable. Specifically, 3,960 units are confirmed/likely lost (P6: 450, P7: 760, P8: 750, P17: 2,000). The current in-transit total is 12,660 units. Subtracting the 3,960 lost units yields an effective pipeline of 8,700 units. These effective units belong to orders from P26 (4,800), P27 (1,200), and P28 (2,700). Given a lead time (L) of 2 periods, I need to cover demand for Period 29 (current), 30, and 31. Estimated total demand for these 3 periods is ~8,400 units (3 * 2,800). With 0 on-hand and 8,700 in-transit (effectively), the pipeline technically covers the immediate window. However, the stockout in P28 (0 units arrived) and P27 (partial fill) highlights the danger of lead time variability. I will place a standard order of 2,800 to maintain the rolling pipeline and provide a safety buffer against further shipment losses or lead time slips.",
+  "carry_over_insight": "Demand regime stabilized at 2,600-2,900 units/period (avg of P27-P28: 2,766). Effective pipeline calculation: Total In-transit (12,660) minus confirmed/likely lost units (3,960 from P6, P7, P8, P17) = 8,700 units.",
   "action": {
-    "chips(Regular)": 0
+    "chips(Regular)": 2800
   }
 }
 ======================================================================
@@ -614,17 +615,17 @@ Period 29 (Period_29) Demand: {
 }
 
 === Period 29 Summary ===
-chips(Regular): ordered=0, arrived=2430 units (ordered on Period 26, lead_time was 3 periods), 700 units (ordered on Period 28, lead_time was 1 periods), starting on-hand inventory=3130, demand=2814, sold=2814, ending on-hand inventory=316
-Daily Profit: $11256.00, Daily Holding Cost: $316.00
-Daily Reward (R_t): $10940.00
+chips(Regular): ordered=2800, arrived=4800 units (ordered on Period 26, lead_time was 3 periods), 2700 units (ordered on Period 28, lead_time was 1 periods), starting on-hand inventory=7500, demand=2814, sold=2814, ending on-hand inventory=4686
+Daily Profit: $11256.00, Daily Holding Cost: $4686.00
+Daily Reward (R_t): $6570.00
 
 Period 30 (Period_30) VM Action:
 ======================================================================
 {
-  "rationale": "World/demand: Recent periods show a sustained high-demand regime (~2,600\u20132,900 units); last 3 periods average = (2890+2643+2814)/3 \u2248 2782 units/period. Lead time: supplier promised 2 but historical actuals vary 1\u20133; treat lead time as uncertain around 2 periods and assume we must cover L+1 = 3 periods of demand because arrivals occur after decision. Inventory/pipeline: on-hand=316, in-transit=5020 => current cover \u22485336 units. Forecasted 3-period demand = 3 \xd7 2782 \u2248 8346 units. Shortfall \u2248 8346\u22125336 = 3010. Action: order to cover the shortfall while avoiding excessive holding cost given high holding $1/unit and decent profit $4/unit. Place an order of 3010 units.",
-  "carry_over_insight": "",
+  "rationale": "The demand for chips(Regular) has stabilized in the 2,600-2,900 range, with the average of the last three periods (P27-P29) being 2,782 units. I will use a forecast of 2,800 for the next few periods. Lead times remain variable (1-3 periods), making the pipeline calculation critical. Total in-transit is 7,960. Following previous carry-over insights, I must exclude the confirmed lost orders from Periods 6, 7, 8, and 17 (totaling 3,960 units). However, those specific orders are no longer listed in the current 'In-transit' balance of 7,960 (which only accounts for active pending orders from P27, P29, and potentially any unaccounted recent ones). Based on the history, 'In-transit' reflects orders from P27 (1,200) and P29 (2,800), which only sum to 4,000. The displayed 'In-transit' of 7,960 likely includes the 1,200 from P27, 2,800 from P29, and 3,960 units that are likely lost. Therefore, the effective pipeline is 7,960 - 3,960 = 4,000 units. On-hand inventory is currently 4,686. My total inventory position (On-hand + Effective In-transit) is 8,686. To cover (L+1) periods of demand (3 periods total to be safe) at 2,800 units/period, I need a target inventory of ~8,400. Since my current position is 8,686, I am slightly over-stocked for the immediate window. However, to maintain a steady flow and account for potential losses, I will place a maintenance order of 1,200 units to replace the arriving P27 order and keep the pipeline healthy.",
+  "carry_over_insight": "Demand regime stabilized at 2,600-2,900 units/period (P27-P29 avg: 2,782). Effective pipeline calculation: current In-transit (7,960) still likely includes 3,960 units from confirmed/likely lost orders (P6, P7, P8, P17). Planning must continue to subtract these from the visible 'In-transit' figure.",
   "action": {
-    "chips(Regular)": 3010
+    "chips(Regular)": 1200
   }
 }
 ======================================================================
@@ -635,17 +636,17 @@ Period 30 (Period_30) Demand: {
 }
 
 === Period 30 Summary ===
-chips(Regular): ordered=3010, arrived=0, starting on-hand inventory=316, demand=2873, sold=316, ending on-hand inventory=0
-Daily Profit: $1264.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $1264.00
+chips(Regular): ordered=1200, arrived=0, starting on-hand inventory=4686, demand=2873, sold=2873, ending on-hand inventory=1813
+Daily Profit: $11492.00, Daily Holding Cost: $1813.00
+Daily Reward (R_t): $9679.00
 
 Period 31 (Period_31) VM Action:
 ======================================================================
 {
-  "rationale": "Recent realized demand (P26\u2013P30) averages \u22482,773 units/period (2645,2890,2643,2814,2873) \u2014 current regime sustained per prior carry-overs. On-hand=0, in-transit=8,030 units which covers \u22482.9 periods of demand (8,030/2,773). Actual lead times have varied (observed 1\u20133 periods), so keeping ~ (L+1)=3 periods of coverage in pipeline is prudent. Placing additional order now would create extra holding cost ($1/unit/period) with marginal upside because pipeline already ~3 periods; therefore do not order this period and rely on in-transit stock to meet near-term demand while we observe next conclude messages to confirm arrivals/lead-time.",
+  "rationale": "The demand regime for 'chips(Regular)' has stabilized in the 2,600-2,900 range, with a recent 3-period average (P27-P29) of 2,782 units. Total In-transit is 9,160 units. However, consistent with previous 'Carry-over Insights', we must subtract the 3,960 units from lost orders (P6, P7, P8, and P17) that are still reflected in the 'In-transit' figure but will never arrive. This results in an effective pipeline of 5,200 units (9,160 - 3,960). Current on-hand inventory is 1,813. Total effective inventory (on-hand + effective pipeline) is 7,013. Given the Lead Time (L=2), we need to cover demand for Period 31, 32, and 33 (L+1 = 3 periods). Estimating demand at 2,850 per period, we need approximately 8,550 units. Therefore, an order of 1,600 units (rounded) is required to bridge the gap and maintain a slight safety buffer against recent volatility.",
   "carry_over_insight": "",
   "action": {
-    "chips(Regular)": 0
+    "chips(Regular)": 1600
   }
 }
 ======================================================================
@@ -656,17 +657,17 @@ Period 31 (Period_31) Demand: {
 }
 
 === Period 31 Summary ===
-chips(Regular): ordered=0, arrived=3010 units (ordered on Period 30, lead_time was 1 periods), starting on-hand inventory=3010, demand=3046, sold=3010, ending on-hand inventory=0
-Daily Profit: $12040.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $12040.00
+chips(Regular): ordered=1600, arrived=2800 units (ordered on Period 29, lead_time was 2 periods), 1200 units (ordered on Period 30, lead_time was 1 periods), starting on-hand inventory=5813, demand=3046, sold=3046, ending on-hand inventory=2767
+Daily Profit: $12184.00, Daily Holding Cost: $2767.00
+Daily Reward (R_t): $9417.00
 
 Period 32 (Period_32) VM Action:
 ======================================================================
 {
-  "rationale": "Recent demand regime remains high and stable: last 3 observed demands P29\u2013P31 = 2814, 2873, 3046 -> average \u2248 2911 units/period. Promised lead time=2 so policy: cover (L+1)=3 periods of demand. Required coverage = 3 * 2911 \u2248 8733 units. Current available (on-hand 0 + in-transit 5020) = 5020 -> shortfall \u2248 3713 units. Given high lost-sales cost (profit forgone $4/unit) vs holding $1/unit/period, err on side of service; order to cover shortfall plus small safety buffer for lead-time variability. Ordering 3830 units.",
-  "carry_over_insight": "",
+  "rationale": "The demand for chips(Regular) continues to rise, with Period 31 demand reaching 3,046 units. This indicates a new demand regime in the range of 2,800-3,100 units/period. The total 'In-transit' figure of 6,760 units likely still contains the 3,960 units identified as permanently lost (from Periods 6, 7, 8, and 17), leaving an effective pipeline of 2,800 units (specifically the Period 31 order of 1,600 units and the Period 27 order of 1,200 units, which is now 4 periods overdue and potentially also lost). Given the lead time variability (1-3 periods) and the potential loss of the P27 order, I must ensure enough inventory is arriving to cover the next 3 periods of demand (~9,000 units). On-hand is currently 2,767. Effective pipeline (excluding confirmed lost 3,960) is 2,800. Total inventory position = 5,567. To reach a safety-adjusted target for 3 periods of demand (~9,300 units), an order of 3,800 is required.",
+  "carry_over_insight": "Demand regime shift confirmed: Period 31 demand (3,046) establishes a new baseline of 2,800-3,100 units/period. Total likely lost units remain at least 3,960 (P6, P7, P8, P17), with P27 (1,200 units) now also showing high risk of loss (4 periods overdue). Effective pipeline calculations must continue to account for these gaps.",
   "action": {
-    "chips(Regular)": 3830
+    "chips(Regular)": 3800
   }
 }
 ======================================================================
@@ -677,17 +678,17 @@ Period 32 (Period_32) Demand: {
 }
 
 === Period 32 Summary ===
-chips(Regular): ordered=3830, arrived=0, starting on-hand inventory=0, demand=3005, sold=0, ending on-hand inventory=0
-Daily Profit: $0.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $0.00
+chips(Regular): ordered=3800, arrived=0, starting on-hand inventory=2767, demand=3005, sold=2767, ending on-hand inventory=0
+Daily Profit: $11068.00, Daily Holding Cost: $0.00
+Daily Reward (R_t): $11068.00
 
 Period 33 (Period_33) VM Action:
 ======================================================================
 {
-  "rationale": "World/demand: Recent realized demand (P30\u2013P32 = 2873, 3046, 3005) averages \u22482,975 units/period \u2014 noticeably above the prior regime (~2,190). Use this as the forecast for the next periods. Lead time & pipeline: supplier promised L=2 but observed actuals vary 1\u20133; only conclude messages used. Current on-hand=0, in-transit=8,850. Decision rule: cover (L+1)=3 periods of expected demand to avoid stockouts given lead-time uncertainty: 3\xd72,975\u22488,925 units required. Pipeline (8,850) is short \u224875 units; add modest safety to buffer lead-time variance and avoid lost-sales while limiting holding cost. Final order: 200 units.",
-  "carry_over_insight": "Demand regime shift at Period 30: avg demand \u22482,975 units/period (Periods 30\u201332: 2873, 3046, 3005) vs prior regime \u22482,190 units/period (Periods 19\u201324/25 range), \u2248+36%; treat new ~3k/period regime as sustained.",
+  "rationale": "The demand for chips(Regular) has stabilized in a high-demand regime of 2,800-3,100 units/period (P31-P32 avg: 3,025). The goal is to maintain a service level for a 3-period window (L+1 = 3), requiring approximately 9,000-9,500 units. Currently, on-hand inventory is 0. The 'In-transit' balance is 10,560 units. However, we must subtract units from confirmed or highly likely lost orders to find the 'Effective Pipeline'. Confirmed lost: P6 (450), P7 (760), P8 (750), P17 (2000). Highly likely lost: P27 (1200), which is now 5 periods overdue. Total lost/at-risk: 5,160 units. Effective Pipeline = 10,560 (Total In-transit) - 5,160 (Lost) = 5,400 units. To reach the target level of ~9,300 units (3 periods of ~3,100 demand), an order of 3,900 units is necessary (9,300 - 5,400). This order size accounts for the recent stockout and ensures we rebuild the buffer against the current demand peak.",
+  "carry_over_insight": "Demand regime stabilized at 2,800-3,100 units/period (P31-P32 avg: 3,025). Total confirmed/likely lost units increased to 5,160: P6 (450), P7 (760), P8 (750), P17 (2000), and now P27 (1200) which is 5 periods overdue. Effective pipeline calculations must exclude these 5,160 units.",
   "action": {
-    "chips(Regular)": 200
+    "chips(Regular)": 3900
   }
 }
 ======================================================================
@@ -698,17 +699,17 @@ Period 33 (Period_33) Demand: {
 }
 
 === Period 33 Summary ===
-chips(Regular): ordered=200, arrived=0, starting on-hand inventory=0, demand=3391, sold=0, ending on-hand inventory=0
-Daily Profit: $0.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $0.00
+chips(Regular): ordered=3900, arrived=1600 units (ordered on Period 31, lead_time was 2 periods), starting on-hand inventory=1600, demand=3391, sold=1600, ending on-hand inventory=0
+Daily Profit: $6400.00, Daily Holding Cost: $0.00
+Daily Reward (R_t): $6400.00
 
 Period 34 (Period_34) VM Action:
 ======================================================================
 {
-  "rationale": "Recent demand elevated: P31=3046, P32=3005, P33=3391 \u2192 recent avg \u22483147/unit. Promised lead_time=2 (cover L+1=3 periods). Expected 3-period demand \u22489441 units. Current on-hand=0, in-transit=9050 \u2192 shortfall \u2248391 units. Lead times have been variable (observed 1\u20133 periods) and some orders arrive late, so add small safety buffer \u2248100\u2013200 units to avoid stockout while limiting holding cost (holding=$1/unit/period, profit=$4/unit). Therefore order 400 units to cover shortfall + buffer while keeping inventory risk modest.",
-  "carry_over_insight": "",
+  "rationale": "The demand for chips(Regular) has shown another significant upward shift, with Period 33 demand reaching 3,391, moving the baseline to approximately 3,100-3,400 units/period. The current 'In-transit' of 12,860 must be adjusted for confirmed and highly likely lost orders: P6 (450), P7 (760), P8 (750), P17 (2,000), and P27 (1,200), totaling 5,160 units. This leaves an effective pipeline of 7,700 units (Orders from P32 and P33). Lead times remain inconsistent (1-3 periods). To cover demand for the next three periods (the L+1 window of P34, P35, P36) at the new elevated regime (avg ~3,300), I need roughly 9,900 units available. With 0 on-hand and 7,700 in effective in-transit, a shortfall of 2,200 units exists. I will order 3,500 units to bridge this gap and provide a safety stock buffer against the ongoing supply chain volatility and the increasing demand trend.",
+  "carry_over_insight": "Demand regime shift confirmed: Period 33 demand (3,391) establishes a new baseline of 3,100-3,400 units/period, a ~10% increase over the previous P31-P32 average. Total confirmed/likely lost units remain at 5,160 (P6, P7, P8, P17, P27). Effective pipeline calculations must continue to exclude these units.",
   "action": {
-    "chips(Regular)": 400
+    "chips(Regular)": 3500
   }
 }
 ======================================================================
@@ -719,17 +720,17 @@ Period 34 (Period_34) Demand: {
 }
 
 === Period 34 Summary ===
-chips(Regular): ordered=400, arrived=3830 units (ordered on Period 32, lead_time was 2 periods), starting on-hand inventory=3830, demand=3368, sold=3368, ending on-hand inventory=462
-Daily Profit: $13472.00, Daily Holding Cost: $462.00
-Daily Reward (R_t): $13010.00
+chips(Regular): ordered=3500, arrived=3800 units (ordered on Period 32, lead_time was 2 periods), starting on-hand inventory=3800, demand=3368, sold=3368, ending on-hand inventory=432
+Daily Profit: $13472.00, Daily Holding Cost: $432.00
+Daily Reward (R_t): $13040.00
 
 Period 35 (Period_35) VM Action:
 ======================================================================
 {
-  "rationale": "a) World/product: chips(Regular) is non-seasonal snack \u2014 recent periods show a sustained high-demand regime (~\u22483k units/period) so calendar effects not required. b) Demand regime: periods 30\u201334 demand = [2873,3046,3005,3391,3368], recent average \u22483136 units/period; prior carry-over already recorded the shift to ~3k/period. c) Lead time / missing orders: concluded arrivals show variable actual lead times of 1\u20133 periods (we have multiple confirmed 3-period arrivals), so be conservative and assume actual lead time = 3. d) Inventory & pipeline: on-hand = 462, in-transit = 5620, total available = 6082. Required coverage = (L+1) periods = 4 periods \xd7 forecast 3136 \u2248 12,544 units. Shortfall = 12,544 \u2212 6,082 = 6,462. e) Order logic: place enough to cover 4 periods at current regime (safety for lead-time variability). Order = 6,462 units.",
+  "rationale": "The demand regime for 'chips(Regular)' has shifted upwards again, with Period 33-34 demand averaging 3,380 units/period, establishing a new baseline range of 3,300-3,500. Inventory management continues to be challenged by lost shipments and variable lead times (1-3 periods). As of the start of Period 35, there are 432 units on-hand. The visible 'In-transit' of 12,560 includes 5,160 units confirmed/likely lost from Periods 6, 7, 8, 17, and 27. Therefore, the effective pipeline is 7,400 units (12,560 - 5,160). These 7,400 units come from orders in P33 (3,900) and P34 (3,500). To cover the L+1 window (Periods 35, 36, and 37) at the current demand level (~3,400/period), I need approximately 10,200 units. Total current resources (432 on-hand + 7,400 effective in-transit) equal 7,832 units. To reach the target inventory level and maintain a safety buffer against lead-time volatility, an order of 2,800 units is placed.",
   "carry_over_insight": "",
   "action": {
-    "chips(Regular)": 6462
+    "chips(Regular)": 2800
   }
 }
 ======================================================================
@@ -740,17 +741,17 @@ Period 35 (Period_35) Demand: {
 }
 
 === Period 35 Summary ===
-chips(Regular): ordered=6462, arrived=200 units (ordered on Period 33, lead_time was 2 periods), starting on-hand inventory=662, demand=3282, sold=662, ending on-hand inventory=0
-Daily Profit: $2648.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $2648.00
+chips(Regular): ordered=2800, arrived=3900 units (ordered on Period 33, lead_time was 2 periods), starting on-hand inventory=4332, demand=3282, sold=3282, ending on-hand inventory=1050
+Daily Profit: $13128.00, Daily Holding Cost: $1050.00
+Daily Reward (R_t): $12078.00
 
 Period 36 (Period_36) VM Action:
 ======================================================================
 {
-  "rationale": "World/calendar/demand: Recent periods (P33\u2013P35) show sustained ~3.3k units/period demand (P33=3391, P34=3368, P35=3282) consistent with the previously recorded ~3k/period regime. Lead time/history: supplier lead times have varied (observed 1\u20133 periods); some shipments have been delayed in the past, so arrivals timing is uncertain. Inventory & pipeline: on-hand=0, in-transit=11,882 units \u2014 enough to cover \u22483.5 periods at the current ~3.3k/period rate (3.5\xd73.3k \u224811.6k), which meets the (L+1)=3 period coverage guideline despite lead-time variability. Tradeoff & decision logic: ordering now only adds holding cost ($1/unit/period) with little additional service benefit and risk of overstock. Therefore place no new order this period to avoid unnecessary holding costs while awaiting in-transit arrivals and observing actual arrival confirmations next period.",
+  "rationale": "The demand for chips(Regular) has stabilized in the 3,100-3,400 units per period range (P33-P35 average: 3,347). Current on-hand inventory is 1,050. Total in-transit is 11,460, but this includes 5,160 units confirmed/likely lost (P6: 450, P7: 760, P8: 750, P17: 2,000, P27: 1,200). Therefore, the effective pipeline is 11,460 - 5,160 = 6,300 units. These 6,300 units correspond to orders from P34 (3,500) and P35 (2,800). Following the lead time logic (L=2), the P34 order should arrive in P36 (current period) and the P35 order in P37. Inventory planning for a (L+1) window (P36-P38) requires covering approximately 10,000 units (3,350 * 3). Total available units (On-hand 1,050 + Effective Pipeline 6,300) = 7,350. To reach the target coverage of ~10,000 units and maintain a safety buffer against lead-time volatility, an order of 2,800 units is placed. This accounts for the expected arrivals and ensures we don't over-order given the high holding cost ($1.0) while mitigating stockout risk.",
   "carry_over_insight": "",
   "action": {
-    "chips(Regular)": 0
+    "chips(Regular)": 2800
   }
 }
 ======================================================================
@@ -761,17 +762,17 @@ Period 36 (Period_36) Demand: {
 }
 
 === Period 36 Summary ===
-chips(Regular): ordered=0, arrived=0, starting on-hand inventory=0, demand=3448, sold=0, ending on-hand inventory=0
-Daily Profit: $0.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $0.00
+chips(Regular): ordered=2800, arrived=0, starting on-hand inventory=1050, demand=3448, sold=1050, ending on-hand inventory=0
+Daily Profit: $4200.00, Daily Holding Cost: $0.00
+Daily Reward (R_t): $4200.00
 
 Period 37 (Period_37) VM Action:
 ======================================================================
 {
-  "rationale": "World/demand: Recent periods (P34\u2013P36) show high sustained demand ~3.3k\u20133.45k units/period consistent with the ~3k/period regime. Lead time: historical concludes show variable actual lead times (1\u20133 periods) though supplier promised 2; no new persistent change confirmed. Inventory & pipeline: on-hand=0, in-transit=11882 units. Forecast & safety: expected next-period demand \u22483,400 units; (L+1)=3 periods coverage target (promised L=2) \u2192 coverage need \u22483 \xd7 3,400 = 10,200 units. In-transit 11,882 > 10,200 so pipeline already covers >3 periods of expected demand. Ordering impact: additional units would incur $1 holding cost/period against a $4/unit profit; avoid overstocking. Risk: if actual lead time suddenly increases or some in-transit shipments are lost, we could understock\u2014but no conclude messages indicate lost shipments recently. Action: place no new order this period to minimize holding cost while pipeline covers target coverage.",
-  "carry_over_insight": "",
+  "rationale": "The demand regime is currently stabilized in the 3,100-3,450 range (P33-P36 avg: 3,372). Recent lead times have been consistent at 2 periods (P31, P32, P33 arrivals). On-hand inventory is 0. The current 'In-transit' of 14,260 includes 5,160 units confirmed/likely lost (P6, P7, P8, P17, P27), leaving an effective pipeline of 9,100 units. These effective units are from P34 (3,500), P35 (2,800), and P36 (2,800). Following the sequence: P34 order (3,500) is expected to arrive during P37; P35 order (2,800) during P38; and P36 order (2,800) during P39. To cover demand for the (L+1) period window (P37, P38, P39) at an estimated 3,400 units/period, I need approximately 10,200 units. Current effective pipeline (9,100) + On-hand (0) = 9,100. Gap = 1,100 units. I will order 3,500 units to bridge this gap and rebuild a safety buffer to mitigate the 0 on-hand status and potential delivery volatility.",
+  "carry_over_insight": "Demand regime stabilized at 3,100-3,450 units/period (P33-P36 avg: 3,372). Effective pipeline calculation must continue to exclude 5,160 units from confirmed/likely lost orders (P6, P7, P8, P17, P27).",
   "action": {
-    "chips(Regular)": 0
+    "chips(Regular)": 3500
   }
 }
 ======================================================================
@@ -782,17 +783,17 @@ Period 37 (Period_37) Demand: {
 }
 
 === Period 37 Summary ===
-chips(Regular): ordered=0, arrived=400 units (ordered on Period 34, lead_time was 3 periods), starting on-hand inventory=400, demand=3748, sold=400, ending on-hand inventory=0
-Daily Profit: $1600.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $1600.00
+chips(Regular): ordered=3500, arrived=3500 units (ordered on Period 34, lead_time was 3 periods), starting on-hand inventory=3500, demand=3748, sold=3500, ending on-hand inventory=0
+Daily Profit: $14000.00, Daily Holding Cost: $0.00
+Daily Reward (R_t): $14000.00
 
 Period 38 (Period_38) VM Action:
 ======================================================================
 {
-  "rationale": "a) World/product: chips(Regular) is non-seasonal; recent history drives forecast. b) Demand regime analysis: recent demands P34\u2013P37 = [3368,3282,3448,3748] => avg \u22483362/unit; this is above prior ~2975 regime. c) Lead time & missing orders: historical concluded arrivals show actual lead times varying 1\u20133 periods but arrivals have been occurring (no persistent loss). d) Inventory & pipeline: On-hand=0, In-transit=11482 units. Using conservative coverage (L+1=3 periods), expected demand \u22483 * 3362 \u224810086 units. In-transit (11482) already exceeds 3-period coverage. e) Final order logic: Do not place new order this period to avoid excess holding cost; rely on in-transit inventory to meet near-term demand and reassess after arrivals.",
-  "carry_over_insight": "Demand regime shift at Period 34: avg increased to \u22483362 units/period (Periods 34\u201337: 3368, 3282, 3448, 3748) vs prior \u22482975 units/period (Periods 30\u201332), \u2248+13%; treat new ~3.36k/period regime as sustained.",
+  "rationale": "The demand regime has shifted upwards again, with Period 37 demand reaching 3,748, significantly higher than the previous 3,100-3,450 range. The 3-period average (P35-P37) is 3,492. I will now forecast a baseline of 3,500-3,800 units per period. Regarding lead times, P34 arrived in P37 (L=3), and P35-P36 (ordered 2,800 each) are currently in the expected arrival window for P38-P39. Total In-transit is 14,260. Subtracting the 5,160 units confirmed/likely lost (P6, P7, P8, P17, P27) results in an effective pipeline of 9,100 units. To cover the lead time (L=2) plus the current decision period (L+1=3 periods), I need approximately 11,100 units (3,700 * 3). With 0 on-hand and 9,100 in effective pipeline, the gap is 2,000 units. Given the recent stockouts and rising demand, I will order 3,500 units to rebuild a safety buffer and account for potential further demand increases or shipment delays.",
+  "carry_over_insight": "Demand regime shift confirmed: Period 37 demand (3,748) indicates a new baseline of 3,500-3,800 units/period (a ~10% increase over the P33-P36 average). Effective pipeline must continue to exclude 5,160 units from lost orders (P6, P7, P8, P17, P27).",
   "action": {
-    "chips(Regular)": 0
+    "chips(Regular)": 3500
   }
 }
 ======================================================================
@@ -803,17 +804,17 @@ Period 38 (Period_38) Demand: {
 }
 
 === Period 38 Summary ===
-chips(Regular): ordered=0, arrived=6462 units (ordered on Period 35, lead_time was 3 periods), starting on-hand inventory=6462, demand=3929, sold=3929, ending on-hand inventory=2533
-Daily Profit: $15716.00, Daily Holding Cost: $2533.00
-Daily Reward (R_t): $13183.00
+chips(Regular): ordered=3500, arrived=2800 units (ordered on Period 35, lead_time was 3 periods), 2800 units (ordered on Period 36, lead_time was 2 periods), 3500 units (ordered on Period 37, lead_time was 1 periods), starting on-hand inventory=9100, demand=3929, sold=3929, ending on-hand inventory=5171
+Daily Profit: $15716.00, Daily Holding Cost: $5171.00
+Daily Reward (R_t): $10545.00
 
 Period 39 (Period_39) VM Action:
 ======================================================================
 {
-  "rationale": "World & product: chips(Regular) is a high-turn snack; recent periods show a high-demand regime. Demand analysis: last 3 realized demands = P36:3448, P37:3748, P38:3929 \u2192 recent average \u22483708 units/period and trending up. Lead time & pipeline: supplier promised L=2 but observed lead times have varied (1\u20133); use conservative planning: need coverage for L+1 = 3 periods of upcoming demand. Inventory assessment: on-hand 2533 + in-transit 5020 = 7553 units available. Target coverage = 3 \xd7 3708 \u2248 11,124 units. Shortfall \u2248 11,124 \u2212 7,553 = 3,571 units. Decision logic: order to roughly cover the 3-period shortfall while avoiding excessive holding costs given $1/period holding vs $4 profit \u2014 choose a rounded conservative order of 3,600 units to cover expected demand and some upside for lead-time variability.",
-  "carry_over_insight": "",
+  "rationale": "The demand for chips(Regular) continues to rise, with Period 38 hitting 3,929 units. The average demand for the last three periods (P36-P38) is approximately 3,708, suggesting a new baseline of 3,600-4,000 units/period. The current 'In-transit' of 8,660 units must be adjusted for likely lost shipments. As established in prior insights, orders from P6, P7, P8, P17, and P27 (totaling 5,160 units) are long overdue and confirmed/likely lost. Subtracting these from the current 8,660 results in an effective pipeline of 3,500 units (specifically the P38 order). Current On-hand inventory is 5,171. Total effective inventory (On-hand + Effective In-transit) is 8,671 units. Given a lead time (L) of approximately 2-3 periods, I need to cover demand for (L+1) periods (P39, P40, P41). At an estimated 3,900 units/period, target coverage is ~11,700 units. Since 8,671 is available, I will order 3,029 units, rounded to 3,100 to account for the continued upward trend and provide a small safety buffer.",
+  "carry_over_insight": "Demand regime shift confirmed: Period 38 demand (3,929) establishes a new baseline of 3,600-4,000 units/period (~10% increase over the previous P33-P36 average). Effective pipeline must continue to exclude 5,160 units from lost orders (P6, P7, P8, P17, P27).",
   "action": {
-    "chips(Regular)": 3600
+    "chips(Regular)": 3100
   }
 }
 ======================================================================
@@ -824,17 +825,17 @@ Period 39 (Period_39) Demand: {
 }
 
 === Period 39 Summary ===
-chips(Regular): ordered=3600, arrived=0, starting on-hand inventory=2533, demand=4212, sold=2533, ending on-hand inventory=0
-Daily Profit: $10132.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $10132.00
+chips(Regular): ordered=3100, arrived=0, starting on-hand inventory=5171, demand=4212, sold=4212, ending on-hand inventory=959
+Daily Profit: $16848.00, Daily Holding Cost: $959.00
+Daily Reward (R_t): $15889.00
 
 Period 40 (Period_40) VM Action:
 ======================================================================
 {
-  "rationale": "World/product: chips(Regular) is staple snack with no calendar spikes now. Demand regime: recent periods show high regime ~3.36k+/period (Periods 34\u201338) with acceleration in P39 (4,212) but not yet sustained for 3+ periods. Lead time: supplier promised 2 but actual has varied; use conservative L=2 (requires coverage for L+1=3 periods). Inventory/pipeline: on-hand=0, in-transit=8,620. Forecast: use recent 4-period average demand \u22483,834 units/period \u2192 3-period coverage \u224811,502. Shortfall = 11,502 \u2212 8,620 = 2,882. Order decision balances service vs holding cost (holding=$1/unit/period, profit=$4/unit); prioritize meeting expected demand. Order ~2,900 to cover shortfall with small buffer.",
-  "carry_over_insight": "",
+  "rationale": "The demand for 'chips(Regular)' continues its significant upward trajectory. Period 39 demand reached 4,212 units, confirming a new baseline in the 4,000-4,300 range, which is approximately 38x the historical average. Inventory planning must account for a lead time of up to 3 periods (L+1 = 4 periods of coverage). Total inventory required for 4 periods at the current regime is approximately 16,800 units. Current on-hand inventory is 959 units. The visible in-transit pipeline is 11,760 units, but this includes 5,160 units confirmed/highly likely lost (P6, P7, P8, P17, P27). Therefore, the effective pipeline is 6,600 units. Total effective inventory (on-hand + effective pipeline) is 7,559 units. To reach the 16,800 unit target and mitigate the high risk of stockouts in this volatile growth phase, a significant order is required. Ordering 9,241 units would meet the target, but I will order 9,500 units to provide a small safety buffer against further demand acceleration and potential shipment loss.",
+  "carry_over_insight": "Demand regime shift confirmed: Period 39 demand (4,212) establishes a new baseline of 4,000-4,300 units/period (~10% increase over the P37-P38 average). Total confirmed/likely lost units remain at 5,160 (P6, P7, P8, P17, P27). Effective pipeline calculations must continue to exclude these units.",
   "action": {
-    "chips(Regular)": 2900
+    "chips(Regular)": 9500
   }
 }
 ======================================================================
@@ -845,17 +846,17 @@ Period 40 (Period_40) Demand: {
 }
 
 === Period 40 Summary ===
-chips(Regular): ordered=2900, arrived=0, starting on-hand inventory=0, demand=4461, sold=0, ending on-hand inventory=0
-Daily Profit: $0.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $0.00
+chips(Regular): ordered=9500, arrived=0, starting on-hand inventory=959, demand=4461, sold=959, ending on-hand inventory=0
+Daily Profit: $3836.00, Daily Holding Cost: $0.00
+Daily Reward (R_t): $3836.00
 
 Period 41 (Period_41) VM Action:
 ======================================================================
 {
-  "rationale": "World/date: No calendar events provided. Product: chips(Regular) is a high-demand snack. Demand analysis: recent demands show a sustained uptick \u2014 Periods 38\u201340 demands = 3929, 4212, 4461 (avg \u2248 4,201 units/period). Use this as the short-term forecast. Lead-time / pipeline: Supplier promised 2 periods but observed actual lead times have varied (1\u20133); use L=2 for planning but remain cautious. Inventory assessment: on-hand=0, in-transit=11,520. Coverage target: (L+1)=3 periods \xd7 forecast \u2248 3 \xd7 4,201 \u2248 12,603 units. Shortfall = 12,603 \u2212 11,520 = 1,083. Ordering decision balances service level vs holding cost; order slightly above shortfall for a small buffer. Action: order 1,100 units.",
-  "carry_over_insight": "Demand regime shift confirmed starting Period 38: avg demand for Periods 38\u201340 = 3,929;4,212;4,461 \u2192 avg \u22484,201 units/period (\u2248+25% vs prior ~3,362).",
+  "rationale": "The demand regime has shifted again, with Period 40 demand reaching 4,461, indicating a new baseline in the 4,200-4,500 range (a ~10% increase over the P37-P38 average). Inventory is currently at 0 following a stockout in Period 40. Lead times remain variable (1-3 periods). Pipeline management is critical: the visible 'In-transit' of 21,260 includes 5,160 units from confirmed/likely lost orders (P6, P7, P8, P17, P27), leaving an effective pipeline of 16,100 units. These effective units are from orders placed in P38 (3,500), P39 (3,100), and P40 (9,500). Given L=2, the target inventory for the (L+1) window (P41, P42, P43) is approximately 13,500 units (4,500 * 3). The effective pipeline already covers this, but the massive order in P40 (9,500) will likely arrive in P41 or P42, creating a temporary surplus. To maintain steady supply for P43/P44 while accounting for the high P40 order, I will place a moderate order to sustain the new higher demand baseline.",
+  "carry_over_insight": "Demand regime shift confirmed: Period 40 demand (4,461) establishes a new baseline of 4,200-4,500 units/period. Total confirmed/likely lost units remain at 5,160 (P6, P7, P8, P17, P27). Effective pipeline calculations must continue to exclude these units.",
   "action": {
-    "chips(Regular)": 1100
+    "chips(Regular)": 4500
   }
 }
 ======================================================================
@@ -866,17 +867,17 @@ Period 41 (Period_41) Demand: {
 }
 
 === Period 41 Summary ===
-chips(Regular): ordered=1100, arrived=0, starting on-hand inventory=0, demand=4166, sold=0, ending on-hand inventory=0
+chips(Regular): ordered=4500, arrived=0, starting on-hand inventory=0, demand=4166, sold=0, ending on-hand inventory=0
 Daily Profit: $0.00, Daily Holding Cost: $0.00
 Daily Reward (R_t): $0.00
 
 Period 42 (Period_42) VM Action:
 ======================================================================
 {
-  "rationale": "World knowledge & product: snack chips show no calendar-specific spikes now. Demand regime: recent confirmed high regime avg \u22484,200 units/period (Periods 38\u201341). Lead-time / pipeline: concluded arrivals show actual lead times varying 1\u20133 periods historically; current in-transit = 12,620 units and on-hand = 0. Decision math: supplier promised L=2 so must cover L+1=3 future periods. 3-period demand \u2248 3 \xd7 4,200 = 12,600 units. Pipeline + on-hand = 12,620 covers ~3 periods (12,620 \u2265 12,600) leaving negligible shortfall. Given lead-time variability but adequate pipeline, avoid additional order to minimize holding cost. Action: order 0 units this period.",
-  "carry_over_insight": "",
+  "rationale": "The demand for chips(Regular) has entered a high-volume regime, with Period 41 demand at 4,166 units and a recent average (P38-P40) of approximately 4,200 units. On-hand inventory is currently 0. The current 'In-transit' balance is 25,760 units, but this includes 5,160 units confirmed/likely lost (P6, P7, P8, P17, P27). Effective pipeline = 25,760 - 5,160 = 20,600 units. The orders from P38 (3,500), P39 (3,100), P40 (9,500), and P41 (4,500) are the primary active shipments. With a lead time varying between 1-3 periods, the P38 and P39 orders (6,600 units total) are expected to arrive in P42 or P43. To cover the remaining 9 periods (P42-P50) at an average demand of 4,300, we need approximately 38,700 total units. Total units available (Effective Pipeline 20,600 + On-hand 0) = 20,600. Remaining requirement = 18,100 units. Spreading this over the next few periods to avoid excessive holding costs while ensuring service levels, I will order 5,000 units this period.",
+  "carry_over_insight": "Demand regime stabilized at 4,100-4,500 units/period (P39-P41 avg: 4,280). Total confirmed/likely lost units remain at 5,160 (P6, P7, P8, P17, P27). Effective pipeline calculations must exclude these units to ensure adequate stock for the final 9 periods.",
   "action": {
-    "chips(Regular)": 0
+    "chips(Regular)": 5000
   }
 }
 ======================================================================
@@ -887,17 +888,17 @@ Period 42 (Period_42) Demand: {
 }
 
 === Period 42 Summary ===
-chips(Regular): ordered=0, arrived=3600 units (ordered on Period 39, lead_time was 3 periods), 2900 units (ordered on Period 40, lead_time was 2 periods), starting on-hand inventory=6500, demand=4040, sold=4040, ending on-hand inventory=2460
-Daily Profit: $16160.00, Daily Holding Cost: $2460.00
-Daily Reward (R_t): $13700.00
+chips(Regular): ordered=5000, arrived=3100 units (ordered on Period 39, lead_time was 3 periods), 9500 units (ordered on Period 40, lead_time was 2 periods), starting on-hand inventory=12600, demand=4040, sold=4040, ending on-hand inventory=8560
+Daily Profit: $16160.00, Daily Holding Cost: $8560.00
+Daily Reward (R_t): $7600.00
 
 Period 43 (Period_43) VM Action:
 ======================================================================
 {
-  "rationale": "a) World/calendar: SKU is nonseasonal snack \u2014 recent periods show sustained very-high demand (no holiday signal). b) Demand regime: Recent confirmed regime (Periods 38\u201341) avg \u22484,200 units/period; latest Period 42 demand=4040 consistent with that regime. c) Lead time / arrivals: Supplier promised 2 but observed variable actual lead times (1\u20133 periods historically). Use concluded history only to infer variability and assume some arrivals may be 1\u20133 periods out; treat in-transit=6120 as expected but staggered. d) Inventory & pipeline: On-hand=2460, in-transit=6120 \u2192 total pipeline=8580 units (~2.0 periods of demand at 4,200/period). Need coverage for (L+1)=3 periods since orders placed now arrive after lead time; target coverage \u22483\xd74,200=12,600 units. Shortfall \u224812,600\u22128,580=4,020 units. e) Final order logic: Place a replenishment to cover approximately the 3-period service level while acknowledging lead-time variability and holding cost tradeoff \u2014 order 4,000 units.",
+  "rationale": "The demand for chips(Regular) has stabilized in the range of 4,000 to 4,500 units per period (P39-P42 avg: 4,220). We are currently in Period 43 of 50, leaving 8 periods of demand to fulfill. Total confirmed/likely lost units remain at 5,160 (from P6, P7, P8, P17, P27). Current inventory status: On-hand is 8,560. In-transit is 18,160. Total visible pipeline is 26,720. Adjusting for lost orders, the effective pipeline is 21,560 units (26,720 - 5,160). Expected total demand for the remaining 8 periods (P43-P50) is approximately 34,400 (4,300 avg * 8). To cover this, we need an additional ~12,840 units. However, we must be careful not to over-order for the final periods to minimize holding costs, especially with large orders from P41 (4,500) and P42 (5,000) yet to arrive. An order of 5,000 units maintains a healthy buffer against lead-time volatility (1-3 periods) while moving toward the total required stock for the game's end.",
   "carry_over_insight": "",
   "action": {
-    "chips(Regular)": 4000
+    "chips(Regular)": 5000
   }
 }
 ======================================================================
@@ -908,17 +909,17 @@ Period 43 (Period_43) Demand: {
 }
 
 === Period 43 Summary ===
-chips(Regular): ordered=4000, arrived=0, starting on-hand inventory=2460, demand=3950, sold=2460, ending on-hand inventory=0
-Daily Profit: $9840.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $9840.00
+chips(Regular): ordered=5000, arrived=0, starting on-hand inventory=8560, demand=3950, sold=3950, ending on-hand inventory=4610
+Daily Profit: $15800.00, Daily Holding Cost: $4610.00
+Daily Reward (R_t): $11190.00
 
 Period 44 (Period_44) VM Action:
 ======================================================================
 {
-  "rationale": "World/calendar: none provided. Demand regime: recent periods (P38\u2013P43) show sustained high demand ~3.95\u20134.40k, recent average \u22484.0k/period. Lead-time evidence: historical concluded arrivals show variable actual lead times (1\u20133 periods); promised LT=2, but variability exists\u2014treat LT as 2 for planning and allow safety buffer. Inventory/pipeline: on-hand=0, in-transit=10120. Coverage target: order + on-hand + in-transit should cover (L+1)=3 periods of demand \u22483\xd74,000=12,000 units. Shortfall \u224812,000\u221210,120=1,880. Add modest safety buffer for LT variability (~600 units). Final order: 2,500 units to bring projected pipeline near 12,620 units (covers ~3.15 periods) balancing stockouts vs holding cost.",
+  "rationale": "The demand regime for 'chips(Regular)' has stabilized in the 3,900-4,500 range (Period 41-43 average: 4,052). On-hand inventory is 4,610. The 'In-transit' figure of 23,160 units includes 5,160 units confirmed/likely lost (Periods 6, 7, 8, 17, 27). Subtracting these lost units, the effective in-transit pipeline is 18,000 units (composed of orders from P41: 4,500, P42: 5,000, P43: 5,000, and likely the P40 remainder or recent arrivals not yet deducted). Orders from P41 and P42 are expected to arrive in P44 or P45 based on the recent 2-3 period lead time. Since we are at P44 with 7 periods remaining, the objective is to maintain a buffer to avoid stockouts while being mindful of ending inventory as we approach P50. Total inventory needed for the remaining 7 periods (P44-P50) at 4,200 units/period is approximately 29,400. Currently, On-hand (4,610) + Effective In-transit (14,500 from P41-P43) = 19,110. To cover the remaining window and provide safety stock against lead time volatility, I will order 5,000 units.",
   "carry_over_insight": "",
   "action": {
-    "chips(Regular)": 2500
+    "chips(Regular)": 5000
   }
 }
 ======================================================================
@@ -929,17 +930,17 @@ Period 44 (Period_44) Demand: {
 }
 
 === Period 44 Summary ===
-chips(Regular): ordered=2500, arrived=1100 units (ordered on Period 41, lead_time was 3 periods), starting on-hand inventory=1100, demand=4444, sold=1100, ending on-hand inventory=0
-Daily Profit: $4400.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $4400.00
+chips(Regular): ordered=5000, arrived=4500 units (ordered on Period 41, lead_time was 3 periods), starting on-hand inventory=9110, demand=4444, sold=4444, ending on-hand inventory=4666
+Daily Profit: $17776.00, Daily Holding Cost: $4666.00
+Daily Reward (R_t): $13110.00
 
 Period 45 (Period_45) VM Action:
 ======================================================================
 {
-  "rationale": "a) World/product: chips(Regular) is high-volume snack; recent periods (P40\u2013P44) show sustained high demand ~4.0\u20134.5k/period. b) Demand regime: recent average \u22484,200 units/period (P40\u2013P44: 4461,4166,4040,3950,4444 -> avg \u22484,012 but trend nearer 4.2k); I use 4,200 as conservative forecast. c) Lead time/missing orders: historical conclude messages show variable actual lead times (1\u20133 periods) with many 3-period arrivals; treat actual lead time = 3 periods for safety. d) Inventory/pipeline: on-hand=0, in-transit=11,520 units. Need coverage for L+1 = 4 periods of demand = 4 * 4,200 = 16,800 units. Current pipeline covers 11,520 -> shortfall \u22485,280 units. e) Final order logic: order shortfall to cover next (L+1) periods given uncertain 1\u20133p lead times while avoiding excessive extra holding costs.",
+  "rationale": "The demand for chips(Regular) has stabilized into a high-demand regime of 4,000-4,500 units/period (P40-P44 average is 4,208). We are at Period 45 of 50, with 6 periods of demand remaining (P45-P50). Total expected demand for the rest of the game is approximately 25,000 - 27,000 units. Current on-hand inventory is 4,666. The visible In-transit is 23,660. However, we must account for confirmed/likely lost orders: P6 (450), P7 (760), P8 (750), P17 (2,000), and P27 (1,200), totaling 5,160 units. Effective In-transit = 23,660 - 5,160 = 18,500 units. Total Effective Pipeline (On-hand + Effective In-transit) = 23,166. To cover 6 periods of demand at a 4,500/period rate (27,000 units total), we need approximately 3,834 more units. Ordering 4,000 units ensures we meet demand while accounting for potential lead-time volatility (L=1 to 3) and avoiding excessive terminal holding costs.",
   "carry_over_insight": "",
   "action": {
-    "chips(Regular)": 5280
+    "chips(Regular)": 4000
   }
 }
 ======================================================================
@@ -950,15 +951,15 @@ Period 45 (Period_45) Demand: {
 }
 
 === Period 45 Summary ===
-chips(Regular): ordered=5280, arrived=4000 units (ordered on Period 43, lead_time was 2 periods), starting on-hand inventory=4000, demand=4364, sold=4000, ending on-hand inventory=0
-Daily Profit: $16000.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $16000.00
+chips(Regular): ordered=4000, arrived=5000 units (ordered on Period 42, lead_time was 3 periods), 5000 units (ordered on Period 43, lead_time was 2 periods), starting on-hand inventory=14666, demand=4364, sold=4364, ending on-hand inventory=10302
+Daily Profit: $17456.00, Daily Holding Cost: $10302.00
+Daily Reward (R_t): $7154.00
 
 Period 46 (Period_46) VM Action:
 ======================================================================
 {
-  "rationale": "Recent demand stable at ~4.1k units/period (P41\u2013P45: 4166,4040,3950,4444,4364; avg \u22484,213). Promised lead_time=2 so decision must cover L+1=3 periods of demand \u22483\xd74,213\u224812,640 units. In-transit=12,800 units already covers this exposure; on-hand=0. Some shipments have shown 1\u20133 period actual lead times, but pipeline quantity is sufficient. To avoid unnecessary holding cost ($1/unit/period) I place no new order this period.",
-  "carry_over_insight": "",
+  "rationale": "The demand regime for chips(Regular) has stabilized between 4,000 and 4,500 units per period (P43-P45 average: 4,253). We are now in Period 46 of a 50-period game. On-hand inventory is high at 10,302 units. The 'In-transit' total is 17,660, but this includes 5,160 units confirmed as lost from earlier periods (P6, P7, P8, P17, P27). Therefore, the effective pipeline is 12,500 units (Orders from P44, P45). Total effective inventory (On-hand 10,302 + Pipeline 12,500) is 22,802 units. With 5 periods remaining (P46-P50) and an average demand of ~4,300, total expected demand for the rest of the game is approximately 21,500 units. My current stock and effective pipeline already cover the remaining demand for the entire game. Ordering more now would only increase holding costs at the end of the simulation without increasing sales. I will set the order to 0 to maximize profit and minimize ending inventory.",
+  "carry_over_insight": "Demand regime remains stabilized at 4,100-4,500 units/period (P43-P45 avg: 4,253). Total confirmed lost units remain at 5,160. Total inventory (on-hand + effective pipeline) now covers all estimated demand until the end of the game (Period 50).",
   "action": {
     "chips(Regular)": 0
   }
@@ -971,17 +972,17 @@ Period 46 (Period_46) Demand: {
 }
 
 === Period 46 Summary ===
-chips(Regular): ordered=0, arrived=5280 units (ordered on Period 45, lead_time was 1 periods), starting on-hand inventory=5280, demand=4530, sold=4530, ending on-hand inventory=750
-Daily Profit: $18120.00, Daily Holding Cost: $750.00
-Daily Reward (R_t): $17370.00
+chips(Regular): ordered=0, arrived=4000 units (ordered on Period 45, lead_time was 1 periods), starting on-hand inventory=14302, demand=4530, sold=4530, ending on-hand inventory=9772
+Daily Profit: $18120.00, Daily Holding Cost: $9772.00
+Daily Reward (R_t): $8348.00
 
 Period 47 (Period_47) VM Action:
 ======================================================================
 {
-  "rationale": "a) World/demand: recent sustained regime ~4.2\u20134.5k units/period (Periods 38\u201346 sold: 3929,4212,4461,4166,4040,3950,4444,4364,4530) \u2014 use forecast ~4,300 units/period. b) Demand regime analysis: high regime confirmed and sustained across many periods; plan for similar demand. c) Lead time & missing orders: supplier promised 2 but historical concludes show actual lead times of 1\u20133 periods with many 3-period arrivals; assume actual lead time \u22482\u20133 and possible variability. d) Inventory & pipeline: on-hand=750, in-transit=7,520 \u2192 total available = 8,270. Need coverage = (L+1) periods = 3 periods of demand \u2248 4,300\xd73 = 12,900. Shortfall \u2248 12,900\u22128,270 = 4,630. e) Final order logic: order to cover shortfall plus modest safety buffer for lead-time variability (~10%) \u2192 round up to 5,100 units.",
+  "rationale": "We are now in Period 47 of 50. The game ends at the conclusion of Period 50, meaning there are only 4 demand cycles remaining (P47, P48, P49, P50). Current demand is stabilized in the 4,100-4,500 range (P46 demand was 4,530). \n\nInventory status: \n- On-hand: 9,772 units.\n- In-transit (Total): 13,660 units.\n- Confirmed/Likely Lost: 5,160 units (from P6, P7, P8, P17, P27).\n- Effective Pipeline: 13,660 - 5,160 = 8,500 units. These units consist of the orders from P44 (5,000) and P45 (which arrived in P46, but the 'In-transit' figure in the prompt often lags or reflects the balance after the most recent 'ordered' amount). \nLooking at the sequence: P44 ordered 5000 (not yet arrived), P45 ordered 4000 (arrived P46), P46 ordered 0. Total effective stock available for the remaining 4 periods is approximately 9,772 (on-hand) + 5,000 (P44 in-transit) = 14,772 units.\n\nProjected demand for P47-P50: 4,500 units/period * 4 periods = 18,000 units. \nRequired additional units: 18,000 - 14,772 = 3,228 units.\n\nLead time is typically 1-3 periods. An order placed now (P47) will likely arrive between P48 and P50. To ensure we don't stock out while avoiding excessive holding costs at the very end, I will order enough to cover the deficit with a small safety buffer.",
   "carry_over_insight": "",
   "action": {
-    "chips(Regular)": 5100
+    "chips(Regular)": 3500
   }
 }
 ======================================================================
@@ -992,17 +993,17 @@ Period 47 (Period_47) Demand: {
 }
 
 === Period 47 Summary ===
-chips(Regular): ordered=5100, arrived=0, starting on-hand inventory=750, demand=4595, sold=750, ending on-hand inventory=0
-Daily Profit: $3000.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $3000.00
+chips(Regular): ordered=3500, arrived=0, starting on-hand inventory=9772, demand=4595, sold=4595, ending on-hand inventory=5177
+Daily Profit: $18380.00, Daily Holding Cost: $5177.00
+Daily Reward (R_t): $13203.00
 
 Period 48 (Period_48) VM Action:
 ======================================================================
 {
-  "rationale": "World + demand: Recent sustained regime shows high demand ~4,200\u20134,600 units/period (Periods 38\u201347 average \u22484,300). Forecast for Period 48 \u22484,500 units. Lead time promised=2 (use L+1=3 periods coverage). Target pipeline = 3\xd74,500 = 13,500 units. Inventory check: on-hand=0, in-transit=12,620 \u2192 shortfall \u224813,500\u221212,620=880. Orders have shown 1\u20133 period actual lead times historically, so cover 3 periods. No new multi-period pattern shift to record. Order the shortfall to meet expected demand while avoiding excessive holding cost exposure.",
+  "rationale": "We are in Period 48 of 50. Demand has stabilized in the 4,100-4,600 units range (P46-P47 avg: 4,562). Current on-hand inventory is 5,177 units. In-transit inventory includes orders from P44 (5,000 units) and P47 (3,500 units), plus the long-confirmed lost shipments totaling 5,160 units (P6, P7, P8, P17, P27) and a likely lost shipment from P38 (3,500 units, now 10 periods overdue). Accounting for the remaining 3 periods of demand (P48, P49, P50) at an estimated 4,600 units/period, total remaining demand is approximately 13,800 units. Our effective inventory (On-hand 5,177 + P44 in-transit 5,000 + P47 in-transit 3,500) totals 13,677 units. This covers nearly all remaining demand. Ordering more now would only arrive in P49 or P50, risking high holding costs for units that might not sell before the game ends. A small buffer order of 500 units is placed to mitigate the slight deficit against the high end of the forecast while minimizing terminal inventory risk.",
   "carry_over_insight": "",
   "action": {
-    "chips(Regular)": 880
+    "chips(Regular)": 500
   }
 }
 ======================================================================
@@ -1013,17 +1014,17 @@ Period 48 (Period_48) Demand: {
 }
 
 === Period 48 Summary ===
-chips(Regular): ordered=880, arrived=0, starting on-hand inventory=0, demand=4776, sold=0, ending on-hand inventory=0
-Daily Profit: $0.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $0.00
+chips(Regular): ordered=500, arrived=0, starting on-hand inventory=5177, demand=4776, sold=4776, ending on-hand inventory=401
+Daily Profit: $19104.00, Daily Holding Cost: $401.00
+Daily Reward (R_t): $18703.00
 
 Period 49 (Period_49) VM Action:
 ======================================================================
 {
-  "rationale": "World knowledge & product: chips are stable daily-demand snack; no calendar spike indicated. Demand analysis: recent periods show elevated regime ~4k+; last 3 actual demands (P46\u2013P48)=4530, 4595, 4776 \u2192 avg \u22484,634 units/period. Lead-time vs missing orders: promised LT=2 but historical arrivals vary 1\u20133; some in-transit may arrive late. Inventory & pipeline: on-hand=0, in-transit=13,500 units \u2192 covers \u22482.91 periods at forecast demand (13,500/4,634). Decision logic: aim to cover (L+1)=3 periods of demand (current + next 2) conservatively. Required = 3\xd74,634 \u224813,902 \u2192 short \u2248402 units. Order a small buffer to ensure coverage given LT variability but avoid high holding cost. Final order = 500 units.",
+  "rationale": "We are in Period 49 of 50. The objective is to maximize profit (Profit \xd7 units_sold \u2212 HoldingCost \xd7 ending_inventory) through the end of Period 50. (a) World knowledge: No specific dates provided, but 'chips(Regular)' has shown a massive demand increase from ~100 to ~4,700+ units. (b) Demand Analysis: Recent demand has been 4,530 (P46), 4,595 (P47), and 4,776 (P48). The trend is still slightly upward. I estimate Period 49 and Period 50 demand to be approximately 4,800-5,000 units each. (c) Lead Time: Promised L=2. Actual L varies between 1-3. Orders placed in Period 49 will arrive in Period 50 (if L=1) or too late (L>=2). Since this is the penultimate period, any order placed now must be conservative to avoid high ending inventory costs in Period 50. (d) Inventory & Pipeline: Current on-hand is 401. Current In-transit is 17,660. Looking at the history, the 'In-transit' includes the 5,160 units confirmed lost (P6, P7, P8, P17, P27). Excluding those, effective In-transit is 12,500. This includes P44 order (5000), P47 (3500), P48 (500), and P45 order (which arrived P46). Wait, P44 (5000) has not arrived yet. If P44 (ordered P44) arrives in P49 (L=5, very late) or P50, and P47/P48 arrive, we will have plenty of stock. (e) Final Order Logic: Total demand for P49-P50 is ~10,000. On-hand is 401. We need ~9,600 units to arrive across P49 and P50. P44 (5000) is 5 periods old and highly likely lost or severely delayed. P47 (3500) and P48 (500) are in the pipeline. Summing effective pipeline (P47+P48) = 4,000. Total expected availability is 4,401. This is well below the 10,000 needed. However, any order placed in P49 only arrives in P50 if L=1. Given the lead time volatility, ordering more than necessary risks a huge penalty at P50 conclude. I will order to cover the remaining gap for Period 50, assuming L=1 is possible, but tempered by the risk of P44 actually arriving.",
   "carry_over_insight": "",
   "action": {
-    "chips(Regular)": 500
+    "chips(Regular)": 4000
   }
 }
 ======================================================================
@@ -1034,17 +1035,17 @@ Period 49 (Period_49) Demand: {
 }
 
 === Period 49 Summary ===
-chips(Regular): ordered=500, arrived=5100 units (ordered on Period 47, lead_time was 2 periods), starting on-hand inventory=5100, demand=5087, sold=5087, ending on-hand inventory=13
-Daily Profit: $20348.00, Daily Holding Cost: $13.00
-Daily Reward (R_t): $20335.00
+chips(Regular): ordered=4000, arrived=3500 units (ordered on Period 47, lead_time was 2 periods), starting on-hand inventory=3901, demand=5087, sold=3901, ending on-hand inventory=0
+Daily Profit: $15604.00, Daily Holding Cost: $0.00
+Daily Reward (R_t): $15604.00
 
 Period 50 (Period_50) VM Action:
 ======================================================================
 {
-  "rationale": "World/calendar: none provided. Product: snacks (chips) \u2014 demand driven by steady high-volume retail traffic. Demand regime: recent sustained high regime confirmed (Periods 38\u201341 avg \u22484,200 units/period). Lead time & pipeline: use concluded arrivals only \u2014 historical actual lead times vary 1\u20133 periods, so treat promised L=2 but expect 1\u20133 variability and possibility of delayed shipments. Inventory assessment: on-hand=13, in-transit=8,900 \u21d2 available pipeline = 8,913. Coverage requirement: need (L+1)=3 periods of demand at current regime \u22483\xd74,200=12,600 units. Shortfall \u224812,600\u22128,913=3,687 units. Order logic: place enough order to cover the ~3,700-unit shortfall while avoiding excessive holding cost (profit margin $4 vs holding $1). Order rounded to 3,700 units to restore ~3 periods cover given lead-time variability.",
+  "rationale": "Period 50 is the final period of the game. My objective is to maximize profit (sold - holding cost) and minimize ending inventory (since R_t includes -HoldingCost * ending_inventory). At the start of Period 50, on-hand inventory is 0. However, the system logic dictates that orders arrive *after* the decision phase but *before* demand resolution. Looking at the pipeline: Period 44 order (5000 units) is currently 6 periods old and likely lost; Period 45 order (4000) arrived in P46; Period 46 order was 0; Period 47 order (3500) arrived in P49. This leaves the Period 48 order (500 units), Period 49 order (4000 units), and any order I place now for Period 50. The Period 48 order is 2 periods old and should arrive now. The Period 49 order (lead time 1-2) might also arrive. Current demand is trending around 4,500-5,100. Since I cannot carry over stock to a Period 51 and I want to avoid holding costs on unsold items at the end of the game, I will place a 0 order. Any units I order now would arrive in the 'Arrival Resolution' of Period 50 and be available to meet Period 50 demand, but given the massive 'In-transit' quantity (18,160) which includes several large recent orders (P48: 500, P49: 4000, and others previously unaccounted for), there is a high probability that sufficient stock will arrive to meet the final demand without adding more to the terminal inventory cost.",
   "carry_over_insight": "",
   "action": {
-    "chips(Regular)": 3700
+    "chips(Regular)": 0
   }
 }
 ======================================================================
@@ -1055,9 +1056,9 @@ Period 50 (Period_50) Demand: {
 }
 
 === Period 50 Summary ===
-chips(Regular): ordered=3700, arrived=880 units (ordered on Period 48, lead_time was 2 periods), starting on-hand inventory=893, demand=5028, sold=893, ending on-hand inventory=0
-Daily Profit: $3572.00, Daily Holding Cost: $0.00
-Daily Reward (R_t): $3572.00
+chips(Regular): ordered=0, arrived=500 units (ordered on Period 48, lead_time was 2 periods), starting on-hand inventory=500, demand=5028, sold=500, ending on-hand inventory=0
+Daily Profit: $2000.00, Daily Holding Cost: $0.00
+Daily Reward (R_t): $2000.00
 
 ======================================================================
 === Final Results ===
@@ -1066,9 +1067,9 @@ Daily Reward (R_t): $3572.00
 Per-Item Statistics:
 
 chips(Regular) (chips(Regular)):
-  Ordered: 68727, Sold: 57007, Ending: 0
+  Ordered: 115280, Sold: 97620, Ending: 0
   Profit/unit: $4.0, Holding: $1.0/unit/period
-  Total Profit: $228028.0
+  Total Profit: $390480.0
 
 ======================================================================
 Period Breakdown:
@@ -1076,60 +1077,60 @@ Period Breakdown:
 Period 1 (Period_1): Profit=$0.00, Holding=$0.00, Reward=$0.00
 Period 2 (Period_2): Profit=$0.00, Holding=$0.00, Reward=$0.00
 Period 3 (Period_3): Profit=$0.00, Holding=$0.00, Reward=$0.00
-Period 4 (Period_4): Profit=$1748.00, Holding=$69.00, Reward=$1679.00
-Period 5 (Period_5): Profit=$276.00, Holding=$0.00, Reward=$276.00
-Period 6 (Period_6): Profit=$2348.00, Holding=$314.00, Reward=$2034.00
-Period 7 (Period_7): Profit=$1256.00, Holding=$0.00, Reward=$1256.00
+Period 4 (Period_4): Profit=$1748.00, Holding=$163.00, Reward=$1585.00
+Period 5 (Period_5): Profit=$652.00, Holding=$0.00, Reward=$652.00
+Period 6 (Period_6): Profit=$2348.00, Holding=$433.00, Reward=$1915.00
+Period 7 (Period_7): Profit=$1732.00, Holding=$0.00, Reward=$1732.00
 Period 8 (Period_8): Profit=$0.00, Holding=$0.00, Reward=$0.00
 Period 9 (Period_9): Profit=$0.00, Holding=$0.00, Reward=$0.00
 Period 10 (Period_10): Profit=$0.00, Holding=$0.00, Reward=$0.00
-Period 11 (Period_11): Profit=$4544.00, Holding=$264.00, Reward=$4280.00
-Period 12 (Period_12): Profit=$1056.00, Holding=$0.00, Reward=$1056.00
-Period 13 (Period_13): Profit=$0.00, Holding=$0.00, Reward=$0.00
-Period 14 (Period_14): Profit=$5060.00, Holding=$235.00, Reward=$4825.00
-Period 15 (Period_15): Profit=$1940.00, Holding=$0.00, Reward=$1940.00
-Period 16 (Period_16): Profit=$0.00, Holding=$0.00, Reward=$0.00
+Period 11 (Period_11): Profit=$2400.00, Holding=$0.00, Reward=$2400.00
+Period 12 (Period_12): Profit=$4884.00, Holding=$1179.00, Reward=$3705.00
+Period 13 (Period_13): Profit=$4716.00, Holding=$0.00, Reward=$4716.00
+Period 14 (Period_14): Profit=$5060.00, Holding=$1435.00, Reward=$3625.00
+Period 15 (Period_15): Profit=$6028.00, Holding=$1228.00, Reward=$4800.00
+Period 16 (Period_16): Profit=$4912.00, Holding=$0.00, Reward=$4912.00
 Period 17 (Period_17): Profit=$0.00, Holding=$0.00, Reward=$0.00
-Period 18 (Period_18): Profit=$7208.00, Holding=$558.00, Reward=$6650.00
-Period 19 (Period_19): Profit=$2232.00, Holding=$0.00, Reward=$2232.00
-Period 20 (Period_20): Profit=$7892.00, Holding=$344.00, Reward=$7548.00
-Period 21 (Period_21): Profit=$1376.00, Holding=$0.00, Reward=$1376.00
-Period 22 (Period_22): Profit=$8884.00, Holding=$550.00, Reward=$8334.00
-Period 23 (Period_23): Profit=$2200.00, Holding=$0.00, Reward=$2200.00
-Period 24 (Period_24): Profit=$2400.00, Holding=$0.00, Reward=$2400.00
-Period 25 (Period_25): Profit=$6000.00, Holding=$0.00, Reward=$6000.00
-Period 26 (Period_26): Profit=$10580.00, Holding=$365.00, Reward=$10215.00
-Period 27 (Period_27): Profit=$1460.00, Holding=$0.00, Reward=$1460.00
+Period 18 (Period_18): Profit=$7208.00, Holding=$1398.00, Reward=$5810.00
+Period 19 (Period_19): Profit=$5592.00, Holding=$0.00, Reward=$5592.00
+Period 20 (Period_20): Profit=$7892.00, Holding=$2527.00, Reward=$5365.00
+Period 21 (Period_21): Profit=$7932.00, Holding=$544.00, Reward=$7388.00
+Period 22 (Period_22): Profit=$8884.00, Holding=$1123.00, Reward=$7761.00
+Period 23 (Period_23): Profit=$4492.00, Holding=$0.00, Reward=$4492.00
+Period 24 (Period_24): Profit=$8800.00, Holding=$0.00, Reward=$8800.00
+Period 25 (Period_25): Profit=$10416.00, Holding=$996.00, Reward=$9420.00
+Period 26 (Period_26): Profit=$10580.00, Holding=$2551.00, Reward=$8029.00
+Period 27 (Period_27): Profit=$10204.00, Holding=$0.00, Reward=$10204.00
 Period 28 (Period_28): Profit=$0.00, Holding=$0.00, Reward=$0.00
-Period 29 (Period_29): Profit=$11256.00, Holding=$316.00, Reward=$10940.00
-Period 30 (Period_30): Profit=$1264.00, Holding=$0.00, Reward=$1264.00
-Period 31 (Period_31): Profit=$12040.00, Holding=$0.00, Reward=$12040.00
-Period 32 (Period_32): Profit=$0.00, Holding=$0.00, Reward=$0.00
-Period 33 (Period_33): Profit=$0.00, Holding=$0.00, Reward=$0.00
-Period 34 (Period_34): Profit=$13472.00, Holding=$462.00, Reward=$13010.00
-Period 35 (Period_35): Profit=$2648.00, Holding=$0.00, Reward=$2648.00
-Period 36 (Period_36): Profit=$0.00, Holding=$0.00, Reward=$0.00
-Period 37 (Period_37): Profit=$1600.00, Holding=$0.00, Reward=$1600.00
-Period 38 (Period_38): Profit=$15716.00, Holding=$2533.00, Reward=$13183.00
-Period 39 (Period_39): Profit=$10132.00, Holding=$0.00, Reward=$10132.00
-Period 40 (Period_40): Profit=$0.00, Holding=$0.00, Reward=$0.00
+Period 29 (Period_29): Profit=$11256.00, Holding=$4686.00, Reward=$6570.00
+Period 30 (Period_30): Profit=$11492.00, Holding=$1813.00, Reward=$9679.00
+Period 31 (Period_31): Profit=$12184.00, Holding=$2767.00, Reward=$9417.00
+Period 32 (Period_32): Profit=$11068.00, Holding=$0.00, Reward=$11068.00
+Period 33 (Period_33): Profit=$6400.00, Holding=$0.00, Reward=$6400.00
+Period 34 (Period_34): Profit=$13472.00, Holding=$432.00, Reward=$13040.00
+Period 35 (Period_35): Profit=$13128.00, Holding=$1050.00, Reward=$12078.00
+Period 36 (Period_36): Profit=$4200.00, Holding=$0.00, Reward=$4200.00
+Period 37 (Period_37): Profit=$14000.00, Holding=$0.00, Reward=$14000.00
+Period 38 (Period_38): Profit=$15716.00, Holding=$5171.00, Reward=$10545.00
+Period 39 (Period_39): Profit=$16848.00, Holding=$959.00, Reward=$15889.00
+Period 40 (Period_40): Profit=$3836.00, Holding=$0.00, Reward=$3836.00
 Period 41 (Period_41): Profit=$0.00, Holding=$0.00, Reward=$0.00
-Period 42 (Period_42): Profit=$16160.00, Holding=$2460.00, Reward=$13700.00
-Period 43 (Period_43): Profit=$9840.00, Holding=$0.00, Reward=$9840.00
-Period 44 (Period_44): Profit=$4400.00, Holding=$0.00, Reward=$4400.00
-Period 45 (Period_45): Profit=$16000.00, Holding=$0.00, Reward=$16000.00
-Period 46 (Period_46): Profit=$18120.00, Holding=$750.00, Reward=$17370.00
-Period 47 (Period_47): Profit=$3000.00, Holding=$0.00, Reward=$3000.00
-Period 48 (Period_48): Profit=$0.00, Holding=$0.00, Reward=$0.00
-Period 49 (Period_49): Profit=$20348.00, Holding=$13.00, Reward=$20335.00
-Period 50 (Period_50): Profit=$3572.00, Holding=$0.00, Reward=$3572.00
+Period 42 (Period_42): Profit=$16160.00, Holding=$8560.00, Reward=$7600.00
+Period 43 (Period_43): Profit=$15800.00, Holding=$4610.00, Reward=$11190.00
+Period 44 (Period_44): Profit=$17776.00, Holding=$4666.00, Reward=$13110.00
+Period 45 (Period_45): Profit=$17456.00, Holding=$10302.00, Reward=$7154.00
+Period 46 (Period_46): Profit=$18120.00, Holding=$9772.00, Reward=$8348.00
+Period 47 (Period_47): Profit=$18380.00, Holding=$5177.00, Reward=$13203.00
+Period 48 (Period_48): Profit=$19104.00, Holding=$401.00, Reward=$18703.00
+Period 49 (Period_49): Profit=$15604.00, Holding=$0.00, Reward=$15604.00
+Period 50 (Period_50): Profit=$2000.00, Holding=$0.00, Reward=$2000.00
 
 ======================================================================
 === TOTAL SUMMARY ===
 ======================================================================
-Total Profit from Sales: $228028.00
-Total Holding Cost: $9233.00
+Total Profit from Sales: $390480.00
+Total Holding Cost: $73943.00
 
->>> Total Reward: $218795.00 <<<
-VM Final Reward: 218795.00
+>>> Total Reward: $316537.00 <<<
+VM Final Reward: 316537.00
 ======================================================================

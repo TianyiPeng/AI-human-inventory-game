@@ -49,7 +49,10 @@ def _safe_print(text: str) -> None:
 
 
 class GPT5MiniAgent(Agent):
-    """Lightweight agent wrapper that uses the OpenAI Responses API with gpt-5-mini."""
+    """
+    OpenAI-only agent wrapper using gpt-5-mini.
+    Kept for backward compatibility with fullstack_demo.
+    """
 
     def __init__(
         self,
@@ -94,6 +97,145 @@ class GPT5MiniAgent(Agent):
 
         response = self.client.responses.create(**request_payload)
         return response.output_text.strip()
+
+
+class LLMAgent(Agent):
+    """
+    Universal LLM Agent supporting multiple providers (OpenAI, Gemini).
+    
+    Required environment variables:
+    - LLM_PROVIDER: 'openai' or 'gemini' (required, no default)
+    - OPENAI_API_KEY: Required when LLM_PROVIDER='openai'
+    - GEMINI_API_KEY: Required when LLM_PROVIDER='gemini'
+    
+    Usage (PowerShell):
+        $env:LLM_PROVIDER="openai"
+        $env:OPENAI_API_KEY="sk-xxx"
+        python or_to_llm_csv_demo.py --demand-file ...
+        
+        $env:LLM_PROVIDER="gemini"  
+        $env:GEMINI_API_KEY="xxx"
+        python or_to_llm_csv_demo.py --demand-file ...
+    """
+
+    def __init__(
+        self,
+        system_prompt: str,
+        reasoning_effort: str = "low",
+        text_verbosity: str = "low",
+    ):
+        super().__init__()
+        self.system_prompt = system_prompt
+        self.reasoning_effort = reasoning_effort
+        self.text_verbosity = text_verbosity
+        
+        # Get provider from environment variable (required)
+        self.provider = os.getenv("LLM_PROVIDER")
+        if not self.provider:
+            raise ValueError(
+                "LLM_PROVIDER environment variable not set.\n"
+                "Please set it to 'openai' or 'gemini'.\n"
+                "PowerShell example: $env:LLM_PROVIDER=\"openai\""
+            )
+        
+        self.provider = self.provider.lower().strip()
+        
+        if self.provider == "openai":
+            self._init_openai()
+        elif self.provider == "gemini":
+            self._init_gemini()
+        else:
+            raise ValueError(
+                f"Unsupported LLM_PROVIDER: '{self.provider}'.\n"
+                "Supported providers: 'openai', 'gemini'"
+            )
+    
+    def _init_openai(self):
+        """Initialize OpenAI client."""
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise ImportError(
+                "OpenAI package is required. Install it with: pip install openai"
+            ) from exc
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "OPENAI_API_KEY environment variable not set.\n"
+                "PowerShell example: $env:OPENAI_API_KEY=\"sk-xxx\""
+            )
+
+        self.model_name = "gpt-5-mini"
+        self.client = OpenAI(api_key=api_key)
+    
+    def _init_gemini(self):
+        """Initialize Gemini client."""
+        try:
+            from google import genai
+            from google.genai import types
+        except ImportError as exc:
+            raise ImportError(
+                "Google GenAI package is required. Install it with: pip install google-genai"
+            ) from exc
+
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "GEMINI_API_KEY environment variable not set.\n"
+                "PowerShell example: $env:GEMINI_API_KEY=\"xxx\""
+            )
+
+        self.model_name = "gemini-3-flash-preview"
+        self.client = genai.Client(api_key=api_key)
+        self._gemini_types = types  # Store types module for later use
+
+    def __call__(self, observation: str) -> str:
+        if not isinstance(observation, str):
+            raise ValueError(f"Observation must be a string. Received type: {type(observation)}")
+
+        if self.provider == "openai":
+            return self._call_openai(observation)
+        else:  # gemini
+            return self._call_gemini(observation)
+    
+    def _call_openai(self, observation: str) -> str:
+        """Call OpenAI Responses API."""
+        request_payload = {
+            "model": self.model_name,
+            "input": [
+                {"role": "system", "content": [{"type": "input_text", "text": self.system_prompt}]},
+                {"role": "user", "content": [{"type": "input_text", "text": observation}]},
+            ],
+        }
+
+        if self.reasoning_effort:
+            request_payload["reasoning"] = {"effort": self.reasoning_effort}
+        if self.text_verbosity:
+            request_payload["text"] = {"verbosity": self.text_verbosity}
+
+        response = self.client.responses.create(**request_payload)
+        return response.output_text.strip()
+    
+    def _call_gemini(self, observation: str) -> str:
+        """Call Gemini API with thinking_level config."""
+        # Combine system prompt and observation
+        full_prompt = f"Instructions: {self.system_prompt}\n\n{observation}"
+        
+        # Map reasoning_effort to Gemini's thinking_level
+        # OpenAI: low/medium/high -> Gemini: low/medium/high (minimal also available)
+        thinking_level = self.reasoning_effort if self.reasoning_effort else "low"
+        
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=full_prompt,
+            config=self._gemini_types.GenerateContentConfig(
+                thinking_config=self._gemini_types.ThinkingConfig(
+                    thinking_level=thinking_level
+                )
+            )
+        )
+        return response.text.strip()
 
 
 def inject_carry_over_insights(observation: str, insights: dict) -> str:
@@ -559,8 +701,16 @@ class ORAgent:
 
 
 def make_hybrid_vm_agent(initial_samples: dict = None, promised_lead_time: int = 0,
-                         human_feedback_enabled: bool = False, guidance_enabled: bool = False):
-    """Create hybrid VM agent that considers OR recommendations with exact dates."""
+                         human_feedback_enabled: bool = False, guidance_enabled: bool = False,
+                         agent_class=None):
+    """Create hybrid VM agent that considers OR recommendations with exact dates.
+    
+    Args:
+        agent_class: Optional. The agent class to use. Defaults to GPT5MiniAgent.
+                     For CLI with multi-provider support, pass LLMAgent.
+    """
+    if agent_class is None:
+        agent_class = GPT5MiniAgent
     
     # Extract item IDs to show in prompt
     available_items = list(initial_samples.keys()) if initial_samples else []
@@ -800,7 +950,7 @@ def make_hybrid_vm_agent(initial_samples: dict = None, promised_lead_time: int =
         "No extra commentary outside the JSON."
     )
     # return ta.agents.OpenAIAgent(model_name="gpt-4o-mini", system_prompt=system, temperature=0)
-    return GPT5MiniAgent(system_prompt=system)
+    return agent_class(system_prompt=system)
 
 
 def main():
@@ -819,11 +969,34 @@ def main():
                        help='Maximum number of periods to run (limits NUM_DAYS). If None, uses all periods from CSV.')
     args = parser.parse_args()
     
-    # Check API key
-    if not os.getenv("OPENAI_API_KEY"):
-        print("Error: Please set your OPENAI_API_KEY environment variable")
-        print('Example: export OPENAI_API_KEY="sk-your-key-here"')
+    # Check LLM provider environment variable
+    provider = os.getenv("LLM_PROVIDER")
+    if not provider:
+        print("Error: LLM_PROVIDER environment variable not set.")
+        print("Please set it to 'openai' or 'gemini'.")
+        print("PowerShell examples:")
+        print('  $env:LLM_PROVIDER="openai"')
+        print('  $env:OPENAI_API_KEY="sk-xxx"')
+        print("  or")
+        print('  $env:LLM_PROVIDER="gemini"')
+        print('  $env:GEMINI_API_KEY="xxx"')
         sys.exit(1)
+    
+    provider = provider.lower().strip()
+    if provider == "openai" and not os.getenv("OPENAI_API_KEY"):
+        print("Error: OPENAI_API_KEY environment variable not set.")
+        print('PowerShell example: $env:OPENAI_API_KEY="sk-xxx"')
+        sys.exit(1)
+    elif provider == "gemini" and not os.getenv("GEMINI_API_KEY"):
+        print("Error: GEMINI_API_KEY environment variable not set.")
+        print('PowerShell example: $env:GEMINI_API_KEY="xxx"')
+        sys.exit(1)
+    elif provider not in ("openai", "gemini"):
+        print(f"Error: Unsupported LLM_PROVIDER: '{provider}'")
+        print("Supported providers: 'openai', 'gemini'")
+        sys.exit(1)
+    
+    print(f"Using LLM provider: {provider}")
     
     # Create environment
     env = ta.make(env_id="VendingMachine-v0")
@@ -897,12 +1070,13 @@ def main():
     }
     or_agent = ORAgent(or_items_config, initial_samples)
     
-    # Create hybrid VM agent
+    # Create hybrid VM agent (using LLMAgent for multi-provider support)
     base_agent = make_hybrid_vm_agent(
         initial_samples=initial_samples,
         promised_lead_time=args.promised_lead_time,
         human_feedback_enabled=args.human_feedback,
-        guidance_enabled=(args.guidance_frequency > 0)
+        guidance_enabled=(args.guidance_frequency > 0),
+        agent_class=LLMAgent
     )
     
     # Wrap with HumanFeedbackAgent if human-in-the-loop modes are enabled

@@ -50,11 +50,27 @@ def _safe_print(text: str) -> None:
 
 
 # ============================================================================
-# GPT5MiniAgent Class (from original)
+# LLMAgent Class (Universal provider support)
 # ============================================================================
 
-class GPT5MiniAgent(Agent):
-    """Lightweight agent wrapper that uses the OpenAI Responses API with gpt-5-mini."""
+class LLMAgent(Agent):
+    """
+    Universal LLM Agent supporting multiple providers (OpenAI, Gemini).
+    
+    Required environment variables:
+    - LLM_PROVIDER: 'openai' or 'gemini' (required, no default)
+    - OPENAI_API_KEY: Required when LLM_PROVIDER='openai'
+    - GEMINI_API_KEY: Required when LLM_PROVIDER='gemini'
+    
+    Usage (PowerShell):
+        $env:LLM_PROVIDER="openai"
+        $env:OPENAI_API_KEY="sk-xxx"
+        python simple_llm_to_or_demo.py --demand-file ...
+        
+        $env:LLM_PROVIDER="gemini"  
+        $env:GEMINI_API_KEY="xxx"
+        python simple_llm_to_or_demo.py --demand-file ...
+    """
 
     def __init__(
         self,
@@ -63,27 +79,82 @@ class GPT5MiniAgent(Agent):
         text_verbosity: str = "low",
     ):
         super().__init__()
+        self.system_prompt = system_prompt
+        self.reasoning_effort = reasoning_effort
+        self.text_verbosity = text_verbosity
+        
+        # Get provider from environment variable (required)
+        self.provider = os.getenv("LLM_PROVIDER")
+        if not self.provider:
+            raise ValueError(
+                "LLM_PROVIDER environment variable not set.\n"
+                "Please set it to 'openai' or 'gemini'.\n"
+                "PowerShell example: $env:LLM_PROVIDER=\"openai\""
+            )
+        
+        self.provider = self.provider.lower().strip()
+        
+        if self.provider == "openai":
+            self._init_openai()
+        elif self.provider == "gemini":
+            self._init_gemini()
+        else:
+            raise ValueError(
+                f"Unsupported LLM_PROVIDER: '{self.provider}'.\n"
+                "Supported providers: 'openai', 'gemini'"
+            )
+    
+    def _init_openai(self):
+        """Initialize OpenAI client."""
         try:
             from openai import OpenAI
         except ImportError as exc:
             raise ImportError(
-                "OpenAI package is required for GPT5MiniAgent. Install it with: pip install openai"
+                "OpenAI package is required. Install it with: pip install openai"
             ) from exc
 
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise ValueError("OpenAI API key not found. Please set the OPENAI_API_KEY environment variable.")
+            raise ValueError(
+                "OPENAI_API_KEY environment variable not set.\n"
+                "PowerShell example: $env:OPENAI_API_KEY=\"sk-xxx\""
+            )
 
         self.model_name = "gpt-5-mini"
-        self.system_prompt = system_prompt
-        self.reasoning_effort = reasoning_effort
-        self.text_verbosity = text_verbosity
         self.client = OpenAI(api_key=api_key)
+    
+    def _init_gemini(self):
+        """Initialize Gemini client."""
+        try:
+            from google import genai
+            from google.genai import types
+        except ImportError as exc:
+            raise ImportError(
+                "Google GenAI package is required. Install it with: pip install google-genai"
+            ) from exc
+
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "GEMINI_API_KEY environment variable not set.\n"
+                "PowerShell example: $env:GEMINI_API_KEY=\"xxx\""
+            )
+
+        self.model_name = "gemini-3-flash-preview"
+        self.client = genai.Client(api_key=api_key)
+        self._gemini_types = types  # Store types module for later use
 
     def __call__(self, observation: str) -> str:
         if not isinstance(observation, str):
             raise ValueError(f"Observation must be a string. Received type: {type(observation)}")
 
+        if self.provider == "openai":
+            return self._call_openai(observation)
+        else:  # gemini
+            return self._call_gemini(observation)
+    
+    def _call_openai(self, observation: str) -> str:
+        """Call OpenAI Responses API."""
         request_payload = {
             "model": self.model_name,
             "input": [
@@ -99,6 +170,26 @@ class GPT5MiniAgent(Agent):
 
         response = self.client.responses.create(**request_payload)
         return response.output_text.strip()
+    
+    def _call_gemini(self, observation: str) -> str:
+        """Call Gemini API with thinking_level config."""
+        # Combine system prompt and observation
+        full_prompt = f"Instructions: {self.system_prompt}\n\n{observation}"
+        
+        # Map reasoning_effort to Gemini's thinking_level
+        # OpenAI: low/medium/high -> Gemini: low/medium/high (minimal also available)
+        thinking_level = self.reasoning_effort if self.reasoning_effort else "low"
+        
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=full_prompt,
+            config=self._gemini_types.GenerateContentConfig(
+                thinking_config=self._gemini_types.ThinkingConfig(
+                    thinking_level=thinking_level
+                )
+            )
+        )
+        return response.text.strip()
 
 
 # ============================================================================
@@ -403,7 +494,7 @@ def make_demand_forecaster_agent(
     item_id: str,
     description: str,
     initial_samples: List[int],
-) -> GPT5MiniAgent:
+) -> LLMAgent:
     """
     Create LLM agent that ONLY forecasts demand.
     No knowledge of inventory, lead time, or game mechanics.
@@ -480,7 +571,7 @@ def make_demand_forecaster_agent(
         "- Focus ONLY on demand forecasting - you have no knowledge of inventory or orders\n"
     )
     
-    return GPT5MiniAgent(system_prompt=system)
+    return LLMAgent(system_prompt=system)
 
 
 # ============================================================================
@@ -641,11 +732,34 @@ def main():
                        help='Maximum number of periods to run. If None, uses all periods from CSV.')
     args = parser.parse_args()
     
-    # Check API key
-    if not os.getenv("OPENAI_API_KEY"):
-        print("Error: Please set your OPENAI_API_KEY environment variable")
-        print('Example: export OPENAI_API_KEY="sk-your-key-here"')
+    # Check LLM provider environment variable
+    provider = os.getenv("LLM_PROVIDER")
+    if not provider:
+        print("Error: LLM_PROVIDER environment variable not set.")
+        print("Please set it to 'openai' or 'gemini'.")
+        print("PowerShell examples:")
+        print('  $env:LLM_PROVIDER="openai"')
+        print('  $env:OPENAI_API_KEY="sk-xxx"')
+        print("  or")
+        print('  $env:LLM_PROVIDER="gemini"')
+        print('  $env:GEMINI_API_KEY="xxx"')
         sys.exit(1)
+    
+    provider = provider.lower().strip()
+    if provider == "openai" and not os.getenv("OPENAI_API_KEY"):
+        print("Error: OPENAI_API_KEY environment variable not set.")
+        print('PowerShell example: $env:OPENAI_API_KEY="sk-xxx"')
+        sys.exit(1)
+    elif provider == "gemini" and not os.getenv("GEMINI_API_KEY"):
+        print("Error: GEMINI_API_KEY environment variable not set.")
+        print('PowerShell example: $env:GEMINI_API_KEY="xxx"')
+        sys.exit(1)
+    elif provider not in ("openai", "gemini"):
+        print(f"Error: Unsupported LLM_PROVIDER: '{provider}'")
+        print("Supported providers: 'openai', 'gemini'")
+        sys.exit(1)
+    
+    print(f"Using LLM provider: {provider}")
     
     # Create environment
     env = ta.make(env_id="VendingMachine-v0")

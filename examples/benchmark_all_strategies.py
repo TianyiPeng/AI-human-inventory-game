@@ -7,7 +7,7 @@ Runs each strategy and calculates:
 - Min/Max rewards
 
 Deterministic strategies (or, perfect_score) run once.
-LLM-based strategies (llm, simple_llm_to_or, or_to_llm) run 5 times.
+LLM-based strategies (llm, llm_to_or, simple_llm_to_or, or_to_llm) run 5 times.
 
 Usage:
   uv run python D:\\TextArena\\examples\\benchmark_all_strategies.py --promised-lead-time 0 --directory D:\\TextArena\\examples\\initial_synthetic_demand_files\\case1_iid_normal
@@ -21,7 +21,7 @@ import json
 import argparse
 from pathlib import Path
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed, wait, FIRST_COMPLETED
 import numpy as np
 from typing import Dict, List, Tuple
 
@@ -31,10 +31,11 @@ PYTHON_EXECUTABLE = sys.executable
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Scripts to benchmark (5 strategies)
+# Scripts to benchmark (6 strategies)
 SCRIPTS = {
     "or": "examples/or_csv_demo.py",
     "llm": "examples/llm_csv_demo.py",
+    "llm_to_or": "examples/llm_to_or_csv_demo.py",
     "simple_llm_to_or": "examples/simple_llm_to_or_demo.py",
     "or_to_llm": "examples/or_to_llm_csv_demo.py",
     "perfect_score": "examples/perfect_score.py",
@@ -44,7 +45,7 @@ SCRIPTS = {
 DETERMINISTIC_SCRIPTS = {"or", "perfect_score"}
 
 # LLM-based scripts (run multiple times due to stochasticity)
-LLM_SCRIPTS = {"llm", "simple_llm_to_or", "or_to_llm"}
+LLM_SCRIPTS = {"llm", "llm_to_or", "simple_llm_to_or", "or_to_llm"}
 
 # Number of runs for LLM-based scripts
 NUM_RUNS = 5
@@ -202,8 +203,17 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
     instance_name = os.path.basename(instance_dir)
     
     # Set default max_workers for LLM scripts
+    # IMPORTANT: LLM API rate limits are the main bottleneck, not CPU/IO
+    # Most LLM APIs have strict per-minute token limits:
+    #   - Gemini: 1M tokens/min (shared across all concurrent calls)
+    #   - OpenAI: varies by tier (500-10000 RPM)
+    # Too many parallel workers will trigger 429 RESOURCE_EXHAUSTED errors
     if max_workers is None:
-        max_workers = min(30, (os.cpu_count() or 4) * 3)
+        # Conservative default: 5 workers to avoid API rate limits
+        # Each worker runs ~50 LLM calls, so 5 workers = ~250 concurrent call capacity
+        max_workers = 5
+        print(f"Note: Using {max_workers} parallel workers (conservative default to avoid API rate limits). "
+              f"Use --max-workers to increase if your API quota allows.")
     
     # Calculate total runs
     total_llm_runs = len(LLM_SCRIPTS) * NUM_RUNS
@@ -227,6 +237,16 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
     print(f"Parallel workers: {max_workers}")
     print("=" * 80)
     
+    # API rate limit warning
+    # High parallelism can trigger 429 RESOURCE_EXHAUSTED errors from LLM APIs
+    if max_workers >= 10:
+        print("\n⚠️  WARNING: High API rate limit risk!")
+        print(f"   - {total_llm_runs} LLM tasks will run with {max_workers} parallel workers")
+        print(f"   - This may trigger API rate limits (429 RESOURCE_EXHAUSTED)")
+        print(f"   - Gemini: 1M tokens/min limit, OpenAI: varies by tier")
+        print(f"   - Consider reducing --max-workers if you see rate limit errors")
+        print(f"   - Recommended: 3-5 workers for most API tiers\n")
+    
     # Results structure: results[script_name] = [reward1, reward2, ...]
     results = defaultdict(list)
     errors = defaultdict(list)
@@ -245,32 +265,49 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
                         promised_lead_time, instance_dir, max_periods, str(BASE_DIR)
                     ))
     
-    # Run all LLM scripts in parallel
+    # Run all LLM scripts in parallel with batching to prevent system overload
     if all_llm_tasks:
         print(f"\nRunning {len(all_llm_tasks)} LLM tasks in parallel ({max_workers} workers)...")
-        print(f"This includes: {', '.join(LLM_SCRIPTS)}\n")
+        print(f"This includes: {', '.join(LLM_SCRIPTS)}")
+        print(f"Note: Tasks will be executed in batches to prevent system overload.\n")
         
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            future_to_task = {executor.submit(run_single_task, task): task for task in all_llm_tasks}
+            future_to_task = {}
+            task_index = 0
+            active_futures = set()
             
-            for future in as_completed(future_to_task):
-                completed_runs += 1
-                task = future_to_task[future]
-                script_name = task[2]
-                run_num = task[1]
+            # Submit tasks in batches (don't submit all at once)
+            while task_index < len(all_llm_tasks) or active_futures:
+                # Submit new tasks up to max_workers limit
+                while len(active_futures) < max_workers and task_index < len(all_llm_tasks):
+                    task = all_llm_tasks[task_index]
+                    future = executor.submit(run_single_task, task)
+                    future_to_task[future] = task
+                    active_futures.add(future)
+                    task_index += 1
                 
-                try:
-                    _, (reward, error, output) = future.result()
-                    
-                    if error:
-                        print(f"[{script_name}] Run {run_num}/{NUM_RUNS} ({completed_runs}/{len(all_llm_tasks)}): ERROR: {error}")
-                        errors[script_name].append(error)
-                    else:
-                        print(f"[{script_name}] Run {run_num}/{NUM_RUNS} ({completed_runs}/{len(all_llm_tasks)}): Reward: ${reward:.2f} (log saved)")
-                        results[script_name].append(reward)
-                except Exception as e:
-                    print(f"[{script_name}] Run {run_num}/{NUM_RUNS} ({completed_runs}/{len(all_llm_tasks)}): EXCEPTION: {str(e)}")
-                    errors[script_name].append(f"Exception: {str(e)}")
+                # Wait for at least one task to complete
+                if active_futures:
+                    done, not_done = wait(active_futures, return_when=FIRST_COMPLETED)
+                    for future in done:
+                        active_futures.remove(future)
+                        completed_runs += 1
+                        task = future_to_task[future]
+                        script_name = task[2]
+                        run_num = task[1]
+                        
+                        try:
+                            _, (reward, error, output) = future.result()
+                            
+                            if error:
+                                print(f"[{script_name}] Run {run_num}/{NUM_RUNS} ({completed_runs}/{len(all_llm_tasks)}): ERROR: {error}")
+                                errors[script_name].append(error)
+                            else:
+                                print(f"[{script_name}] Run {run_num}/{NUM_RUNS} ({completed_runs}/{len(all_llm_tasks)}): Reward: ${reward:.2f} (log saved)")
+                                results[script_name].append(reward)
+                        except Exception as e:
+                            print(f"[{script_name}] Run {run_num}/{NUM_RUNS} ({completed_runs}/{len(all_llm_tasks)}): EXCEPTION: {str(e)}")
+                            errors[script_name].append(f"Exception: {str(e)}")
     
     # Run deterministic scripts sequentially (fast, no need for parallel, only 1 run each)
     print(f"\n{'='*80}")
@@ -381,12 +418,12 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description='Benchmark all strategies (or, llm, simple_llm_to_or, or_to_llm, perfect_score)',
+        description='Benchmark all strategies (or, llm, llm_to_or, simple_llm_to_or, or_to_llm, perfect_score)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Strategies:
   - Deterministic (1 run): or, perfect_score
-  - LLM-based (5 runs): llm, simple_llm_to_or, or_to_llm
+  - LLM-based (5 runs): llm, llm_to_or, simple_llm_to_or, or_to_llm
 
 Example:
   python benchmark_all_strategies.py --promised-lead-time 1 --directory D:\\TextArena\\examples\\initial_synthetic_demand_files\\case1_iid_normal
@@ -399,7 +436,9 @@ Example:
     parser.add_argument('--max-periods', type=int, default=None,
                        help='Maximum number of periods to run per test. Default: None (runs all periods)')
     parser.add_argument('--max-workers', type=int, default=None,
-                       help='Maximum number of parallel workers for LLM scripts. Default: min(20, CPU_count * 3)')
+                       help='Maximum number of parallel workers for LLM scripts. '
+                             'Default: 5 (conservative to avoid API rate limits). '
+                             'Increase cautiously based on your API quota.')
     args = parser.parse_args()
     
     benchmark_all(
