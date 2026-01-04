@@ -156,15 +156,38 @@ def run_script(script_path: str, run_num: int, script_name: str,
             # If we can't write the log, continue anyway but note it
             output += f"\n[Warning: Could not save log to {log_path}: {str(e)}]"
         
+        # Try to extract reward from output
         reward = extract_reward_from_output(output)
         
-        if reward is None:
-            return None, f"Could not extract reward from output. Exit code: {result.returncode}", output
+        # If extraction failed, try reading from log file (in case output was truncated)
+        # This handles cases where the script completed but subprocess output was incomplete
+        # Also handles encoding issues or buffering problems
+        if reward is None and os.path.exists(log_path):
+            try:
+                # Try multiple encodings in case of encoding issues
+                for encoding in ['utf-8', 'utf-16', 'latin-1']:
+                    try:
+                        with open(log_path, 'r', encoding=encoding, errors='replace') as f:
+                            log_content = f.read()
+                        reward = extract_reward_from_output(log_content)
+                        if reward is not None:
+                            break  # Successfully extracted, no need to try other encodings
+                    except (UnicodeDecodeError, UnicodeError):
+                        continue  # Try next encoding
+            except Exception:
+                pass
         
-        if result.returncode != 0:
-            return None, f"Script failed with exit code {result.returncode}", output
+        # If we successfully extracted reward, return it even if exit code is non-zero
+        # Script may have completed successfully but returned non-zero for other reasons
+        # (e.g., API rate limit errors after completion, cleanup errors, etc.)
+        if reward is not None:
+            if result.returncode != 0:
+                # Log a warning but still return the reward
+                return reward, f"Warning: Script returned exit code {result.returncode} but reward was extracted", output
+            return reward, None, output
         
-        return reward, None, output
+        # If we couldn't extract reward, return error
+        return None, f"Could not extract reward from output. Exit code: {result.returncode}", output
         
     except subprocess.TimeoutExpired as e:
         timeout_minutes = 2000 / 60

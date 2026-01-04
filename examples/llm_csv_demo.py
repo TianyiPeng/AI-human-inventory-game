@@ -49,12 +49,13 @@ def _safe_print(text: str) -> None:
 
 class LLMAgent(Agent):
     """
-    Universal LLM Agent supporting multiple providers (OpenAI, Gemini).
+    Universal LLM Agent supporting multiple providers (OpenAI, Gemini, OpenRouter-Gemini).
     
     Required environment variables:
-    - LLM_PROVIDER: 'openai' or 'gemini' (required, no default)
+    - LLM_PROVIDER: 'openai', 'gemini', or 'openrouter-gemini' (required, no default)
     - OPENAI_API_KEY: Required when LLM_PROVIDER='openai'
     - GEMINI_API_KEY: Required when LLM_PROVIDER='gemini'
+    - OPENROUTER_API_KEY: Required when LLM_PROVIDER='openrouter-gemini'
     
     Usage (PowerShell):
         $env:LLM_PROVIDER="openai"
@@ -63,6 +64,10 @@ class LLMAgent(Agent):
         
         $env:LLM_PROVIDER="gemini"  
         $env:GEMINI_API_KEY="xxx"
+        python llm_csv_demo.py --demand-file ...
+        
+        $env:LLM_PROVIDER="openrouter-gemini"
+        $env:OPENROUTER_API_KEY="sk-or-xxx"
         python llm_csv_demo.py --demand-file ...
     """
 
@@ -92,10 +97,12 @@ class LLMAgent(Agent):
             self._init_openai()
         elif self.provider == "gemini":
             self._init_gemini()
+        elif self.provider == "openrouter-gemini":
+            self._init_openrouter_gemini()
         else:
             raise ValueError(
                 f"Unsupported LLM_PROVIDER: '{self.provider}'.\n"
-                "Supported providers: 'openai', 'gemini'"
+                "Supported providers: 'openai', 'gemini', 'openrouter-gemini'"
             )
     
     def _init_openai(self):
@@ -137,6 +144,32 @@ class LLMAgent(Agent):
         self.model_name = "gemini-3-flash-preview"
         self.client = genai.Client(api_key=api_key)
         self._gemini_types = types  # Store types module for later use
+    
+    def _init_openrouter_gemini(self):
+        """Initialize OpenRouter client for Gemini."""
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise ImportError(
+                "OpenAI package is required for OpenRouter. Install it with: pip install openai"
+            ) from exc
+
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "OPENROUTER_API_KEY environment variable not set.\n"
+                "PowerShell example: $env:OPENROUTER_API_KEY=\"sk-or-xxx\""
+            )
+
+        self.model_name = "google/gemini-3-flash-preview"
+        self.client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key,
+            default_headers={
+                "HTTP-Referer": "https://github.com/your-repo",  # Optional, for tracking
+                "X-Title": "TextArena VM Demo",  # Optional, for tracking
+            }
+        )
 
     def __call__(self, observation: str) -> str:
         if not isinstance(observation, str):
@@ -144,8 +177,10 @@ class LLMAgent(Agent):
 
         if self.provider == "openai":
             return self._call_openai(observation)
-        else:  # gemini
+        elif self.provider == "gemini":
             return self._call_gemini(observation)
+        else:  # openrouter-gemini
+            return self._call_openrouter_gemini(observation)
     
     def _call_openai(self, observation: str) -> str:
         """Call OpenAI Responses API."""
@@ -184,6 +219,43 @@ class LLMAgent(Agent):
             )
         )
         return response.text.strip()
+    
+    def _call_openrouter_gemini(self, observation: str) -> str:
+        """Call OpenRouter API for Gemini with reasoning config."""
+        # Map reasoning_effort to OpenRouter's reasoning.effort
+        # OpenRouter uses reasoning object with effort field: "low", "medium", "high"
+        reasoning_effort = self.reasoning_effort if self.reasoning_effort else "low"
+        
+        messages = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": observation}
+        ]
+        
+        # OpenRouter uses reasoning object format
+        # Try passing reasoning directly first
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                reasoning={
+                    "effort": reasoning_effort,
+                    "exclude": False  # Set to True if you want model to think but not include reasoning in output
+                }
+            )
+            return response.choices[0].message.content.strip()
+        except TypeError:
+            # If direct reasoning parameter doesn't work, use extra_body
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                extra_body={
+                    "reasoning": {
+                        "effort": reasoning_effort,
+                        "exclude": False
+                    }
+                }
+            )
+            return response.choices[0].message.content.strip()
 
 
 def inject_carry_over_insights(observation: str, insights: dict) -> str:
@@ -661,13 +733,16 @@ def main():
     provider = os.getenv("LLM_PROVIDER")
     if not provider:
         print("Error: LLM_PROVIDER environment variable not set.")
-        print("Please set it to 'openai' or 'gemini'.")
+        print("Please set it to 'openai', 'gemini', or 'openrouter-gemini'.")
         print("PowerShell examples:")
         print('  $env:LLM_PROVIDER="openai"')
         print('  $env:OPENAI_API_KEY="sk-xxx"')
         print("  or")
         print('  $env:LLM_PROVIDER="gemini"')
         print('  $env:GEMINI_API_KEY="xxx"')
+        print("  or")
+        print('  $env:LLM_PROVIDER="openrouter-gemini"')
+        print('  $env:OPENROUTER_API_KEY="sk-or-xxx"')
         sys.exit(1)
     
     provider = provider.lower().strip()
@@ -679,9 +754,13 @@ def main():
         print("Error: GEMINI_API_KEY environment variable not set.")
         print('PowerShell example: $env:GEMINI_API_KEY="xxx"')
         sys.exit(1)
-    elif provider not in ("openai", "gemini"):
+    elif provider == "openrouter-gemini" and not os.getenv("OPENROUTER_API_KEY"):
+        print("Error: OPENROUTER_API_KEY environment variable not set.")
+        print('PowerShell example: $env:OPENROUTER_API_KEY="sk-or-xxx"')
+        sys.exit(1)
+    elif provider not in ("openai", "gemini", "openrouter-gemini"):
         print(f"Error: Unsupported LLM_PROVIDER: '{provider}'")
-        print("Supported providers: 'openai', 'gemini'")
+        print("Supported providers: 'openai', 'gemini', 'openrouter-gemini'")
         sys.exit(1)
     
     print(f"Using LLM provider: {provider}")

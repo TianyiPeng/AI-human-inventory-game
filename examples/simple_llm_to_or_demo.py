@@ -55,12 +55,13 @@ def _safe_print(text: str) -> None:
 
 class LLMAgent(Agent):
     """
-    Universal LLM Agent supporting multiple providers (OpenAI, Gemini).
+    Universal LLM Agent supporting multiple providers (OpenAI, Gemini, OpenRouter-Gemini).
     
     Required environment variables:
-    - LLM_PROVIDER: 'openai' or 'gemini' (required, no default)
+    - LLM_PROVIDER: 'openai', 'gemini', or 'openrouter-gemini' (required, no default)
     - OPENAI_API_KEY: Required when LLM_PROVIDER='openai'
     - GEMINI_API_KEY: Required when LLM_PROVIDER='gemini'
+    - OPENROUTER_API_KEY: Required when LLM_PROVIDER='openrouter-gemini'
     
     Usage (PowerShell):
         $env:LLM_PROVIDER="openai"
@@ -69,6 +70,10 @@ class LLMAgent(Agent):
         
         $env:LLM_PROVIDER="gemini"  
         $env:GEMINI_API_KEY="xxx"
+        python simple_llm_to_or_demo.py --demand-file ...
+        
+        $env:LLM_PROVIDER="openrouter-gemini"
+        $env:OPENROUTER_API_KEY="sk-or-xxx"
         python simple_llm_to_or_demo.py --demand-file ...
     """
 
@@ -98,10 +103,12 @@ class LLMAgent(Agent):
             self._init_openai()
         elif self.provider == "gemini":
             self._init_gemini()
+        elif self.provider == "openrouter-gemini":
+            self._init_openrouter_gemini()
         else:
             raise ValueError(
                 f"Unsupported LLM_PROVIDER: '{self.provider}'.\n"
-                "Supported providers: 'openai', 'gemini'"
+                "Supported providers: 'openai', 'gemini', 'openrouter-gemini'"
             )
     
     def _init_openai(self):
@@ -143,6 +150,32 @@ class LLMAgent(Agent):
         self.model_name = "gemini-3-flash-preview"
         self.client = genai.Client(api_key=api_key)
         self._gemini_types = types  # Store types module for later use
+    
+    def _init_openrouter_gemini(self):
+        """Initialize OpenRouter client for Gemini."""
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise ImportError(
+                "OpenAI package is required for OpenRouter. Install it with: pip install openai"
+            ) from exc
+
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "OPENROUTER_API_KEY environment variable not set.\n"
+                "PowerShell example: $env:OPENROUTER_API_KEY=\"sk-or-xxx\""
+            )
+
+        self.model_name = "google/gemini-3-flash-preview"
+        self.client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key,
+            default_headers={
+                "HTTP-Referer": "https://github.com/your-repo",  # Optional, for tracking
+                "X-Title": "TextArena VM Demo",  # Optional, for tracking
+            }
+        )
 
     def __call__(self, observation: str) -> str:
         if not isinstance(observation, str):
@@ -150,8 +183,10 @@ class LLMAgent(Agent):
 
         if self.provider == "openai":
             return self._call_openai(observation)
-        else:  # gemini
+        elif self.provider == "gemini":
             return self._call_gemini(observation)
+        else:  # openrouter-gemini
+            return self._call_openrouter_gemini(observation)
     
     def _call_openai(self, observation: str) -> str:
         """Call OpenAI Responses API."""
@@ -190,6 +225,43 @@ class LLMAgent(Agent):
             )
         )
         return response.text.strip()
+    
+    def _call_openrouter_gemini(self, observation: str) -> str:
+        """Call OpenRouter API for Gemini with reasoning config."""
+        # Map reasoning_effort to OpenRouter's reasoning.effort
+        # OpenRouter uses reasoning object with effort field: "low", "medium", "high"
+        reasoning_effort = self.reasoning_effort if self.reasoning_effort else "low"
+        
+        messages = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": observation}
+        ]
+        
+        # OpenRouter uses reasoning object format
+        # Try passing reasoning directly first
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                reasoning={
+                    "effort": reasoning_effort,
+                    "exclude": False  # Set to True if you want model to think but not include reasoning in output
+                }
+            )
+            return response.choices[0].message.content.strip()
+        except TypeError:
+            # If direct reasoning parameter doesn't work, use extra_body
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                extra_body={
+                    "reasoning": {
+                        "effort": reasoning_effort,
+                        "exclude": False
+                    }
+                }
+            )
+            return response.choices[0].message.content.strip()
 
 
 # ============================================================================
@@ -240,13 +312,58 @@ def robust_parse_json(text: str, required_field: str = "predicted_demand") -> di
     cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
     cleaned = re.sub(r'\s*```$', '', cleaned)
     
+    # Step 1.5: Fix invalid escape sequences in JSON strings
+    # JSON only supports: \", \\, \/, \b, \f, \n, \r, \t, \uXXXX
+    # Fix common invalid escapes:
+    # - \$ -> $ (dollar sign doesn't need escaping in JSON)
+    # - \xXX -> convert to \u00XX (hex escape to unicode escape)
+    def fix_invalid_escapes(text):
+        # Fix \$ -> $ (but not \\$ which is a literal backslash followed by $)
+        text = re.sub(r'(?<!\\)\\\$', '$', text)
+        # Fix \% -> % (percent sign doesn't need escaping in JSON)
+        text = re.sub(r'(?<!\\)\\%', '%', text)
+        # Fix \xXX -> \u00XX (convert hex escapes to unicode escapes)
+        def hex_to_unicode(match):
+            hex_val = match.group(1)
+            try:
+                # Convert hex to unicode code point
+                code_point = int(hex_val, 16)
+                # Convert to \uXXXX format
+                return f'\\u{code_point:04X}'
+            except ValueError:
+                return match.group(0)  # Keep original if invalid
+        text = re.sub(r'\\x([0-9a-fA-F]{2})', hex_to_unicode, text)
+        return text
+    
+    cleaned = fix_invalid_escapes(cleaned)
+    
     # Step 2: Try direct parse first
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
         pass
     
-    # Step 3: Try to find ALL potential JSON objects and pick the valid one
+    # Step 3: Try to extract JSON object from text (in case there's extra text before/after)
+    # Find the first { and last }
+    first_brace = cleaned.find('{')
+    last_brace = cleaned.rfind('}')
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        json_candidate = cleaned[first_brace:last_brace + 1]
+        # Remove trailing commas
+        repaired = re.sub(r',(\s*[}\]])', r'\1', json_candidate)
+        # Fix invalid escapes in candidate
+        repaired = fix_invalid_escapes(repaired)
+        try:
+            parsed = json.loads(repaired)
+            if isinstance(parsed, dict):
+                if required_field and required_field in parsed:
+                    return parsed
+                # If no required field specified or found, return anyway
+                return parsed
+        except json.JSONDecodeError:
+            pass
+    
+    # Step 4: Try to find ALL potential JSON objects and pick the valid one
     # This handles cases where LLM restarts and outputs multiple JSONs concatenated
     brace_positions = []
     for i, char in enumerate(cleaned):
@@ -265,6 +382,9 @@ def robust_parse_json(text: str, required_field: str = "predicted_demand") -> di
             if type_j != 'close':
                 continue
             candidate = cleaned[pos_i:pos_j + 1]
+            # Fix invalid escapes and trailing commas
+            candidate = fix_invalid_escapes(candidate)
+            candidate = re.sub(r',(\s*[}\]])', r'\1', candidate)
             try:
                 parsed = json.loads(candidate)
                 if isinstance(parsed, dict):
@@ -283,22 +403,51 @@ def robust_parse_json(text: str, required_field: str = "predicted_demand") -> di
                 return j
         return valid_jsons[-1]
     
-    # Step 4: Try first-to-last brace extraction with repair
-    first_brace = cleaned.find('{')
-    last_brace = cleaned.rfind('}')
-    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-        json_candidate = cleaned[first_brace:last_brace + 1]
-        # Remove trailing commas
-        repaired = re.sub(r',(\s*[}\]])', r'\1', json_candidate)
-        try:
-            return json.loads(repaired)
-        except json.JSONDecodeError:
-            pass
+    # Step 5: Try to fix unterminated strings by closing them at the end
+    # This handles cases where LLM output was cut off mid-string
+    # Find unclosed strings in the JSON structure
+    repaired = cleaned
+    # Remove trailing commas
+    repaired = re.sub(r',(\s*[}\]])', r'\1', repaired)
+    # Fix invalid escapes
+    repaired = fix_invalid_escapes(repaired)
     
-    # Step 5: Final attempt - remove trailing commas on full text
-    repaired = re.sub(r',(\s*[}\]])', r'\1', cleaned)
+    # Try to close unterminated strings by finding the last unclosed quote
+    # This is a heuristic: if we have an odd number of quotes after the last complete key-value pair,
+    # we might have an unterminated string
     try:
         return json.loads(repaired)
+    except json.JSONDecodeError as e:
+        # If error is about unterminated string, try to close it
+        if 'Unterminated string' in str(e) or 'Unterminated' in str(e.msg):
+            # Try to find the last opening quote and close it before the next structural character
+            # This is a best-effort attempt
+            last_quote_pos = repaired.rfind('"')
+            if last_quote_pos != -1:
+                # Check if this quote is followed by structural characters
+                remaining = repaired[last_quote_pos+1:]
+                # If there's no closing quote before the next }, ], or end of string, add one
+                if not re.search(r'^[^"}]*"', remaining):
+                    # Try inserting a closing quote before the next } or ]
+                    match = re.search(r'[}\]]', remaining)
+                    if match:
+                        insert_pos = last_quote_pos + 1 + match.start()
+                        repaired = repaired[:insert_pos] + '"' + repaired[insert_pos:]
+                        try:
+                            return json.loads(repaired)
+                        except json.JSONDecodeError:
+                            pass
+                    else:
+                        # No structural character found, try closing at the end
+                        repaired = repaired + '"'
+                        try:
+                            return json.loads(repaired)
+                        except json.JSONDecodeError:
+                            pass
+    
+    # Step 6: Final attempt - raise original error with helpful message
+    try:
+        json.loads(cleaned)  # This will raise the original error
     except json.JSONDecodeError as e:
         raise json.JSONDecodeError(
             f"Failed to parse JSON after repair attempts. Original error: {e.msg}",
@@ -736,13 +885,16 @@ def main():
     provider = os.getenv("LLM_PROVIDER")
     if not provider:
         print("Error: LLM_PROVIDER environment variable not set.")
-        print("Please set it to 'openai' or 'gemini'.")
+        print("Please set it to 'openai', 'gemini', or 'openrouter-gemini'.")
         print("PowerShell examples:")
         print('  $env:LLM_PROVIDER="openai"')
         print('  $env:OPENAI_API_KEY="sk-xxx"')
         print("  or")
         print('  $env:LLM_PROVIDER="gemini"')
         print('  $env:GEMINI_API_KEY="xxx"')
+        print("  or")
+        print('  $env:LLM_PROVIDER="openrouter-gemini"')
+        print('  $env:OPENROUTER_API_KEY="sk-or-xxx"')
         sys.exit(1)
     
     provider = provider.lower().strip()
@@ -754,9 +906,13 @@ def main():
         print("Error: GEMINI_API_KEY environment variable not set.")
         print('PowerShell example: $env:GEMINI_API_KEY="xxx"')
         sys.exit(1)
-    elif provider not in ("openai", "gemini"):
+    elif provider == "openrouter-gemini" and not os.getenv("OPENROUTER_API_KEY"):
+        print("Error: OPENROUTER_API_KEY environment variable not set.")
+        print('PowerShell example: $env:OPENROUTER_API_KEY="sk-or-xxx"')
+        sys.exit(1)
+    elif provider not in ("openai", "gemini", "openrouter-gemini"):
         print(f"Error: Unsupported LLM_PROVIDER: '{provider}'")
-        print("Supported providers: 'openai', 'gemini'")
+        print("Supported providers: 'openai', 'gemini', 'openrouter-gemini'")
         sys.exit(1)
     
     print(f"Using LLM provider: {provider}")
