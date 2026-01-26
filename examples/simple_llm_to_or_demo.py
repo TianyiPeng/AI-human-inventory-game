@@ -303,151 +303,160 @@ def inject_carry_over_insights(observation: str, insights: Dict[int, str]) -> st
 
 
 def robust_parse_json(text: str, required_field: str = "predicted_demand") -> dict:
-    """
+    r"""
     Robustly parse JSON from LLM output, attempting to fix common formatting errors.
-    Handles cases where LLM outputs multiple concatenated JSON objects (restart mid-stream).
-    """
-    # Step 1: Clean markdown code fences
-    cleaned = text.strip()
-    cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
-    cleaned = re.sub(r'\s*```$', '', cleaned)
     
-    # Step 1.5: Fix invalid escape sequences in JSON strings
-    # JSON only supports: \", \\, \/, \b, \f, \n, \r, \t, \uXXXX
-    # Fix common invalid escapes:
-    # - \$ -> $ (dollar sign doesn't need escaping in JSON)
-    # - \xXX -> convert to \u00XX (hex escape to unicode escape)
+    Common issues fixed:
+    - Missing opening brace (LLM outputs "rationale": "..." instead of {"rationale": "..."})
+    - Extra closing braces
+    - Invalid escape sequences (\$, \%, \xXX)
+    - Trailing commas
+    - Markdown code fences
+    - Empty responses
+    - Multiple concatenated JSON objects
+    
+    Args:
+        text: Raw text from LLM
+        required_field: Field name that should be in the result (default: "predicted_demand")
+        
+    Returns:
+        Parsed JSON dict
+        
+    Raises:
+        json.JSONDecodeError: If JSON cannot be parsed even after repair attempts
+    """
+    
     def fix_invalid_escapes(text):
-        # Fix \$ -> $ (but not \\$ which is a literal backslash followed by $)
+        """Fix invalid JSON escape sequences."""
+        # Fix \$ -> $ (dollar sign doesn't need escaping)
         text = re.sub(r'(?<!\\)\\\$', '$', text)
-        # Fix \% -> % (percent sign doesn't need escaping in JSON)
+        # Fix \% -> % (percent sign doesn't need escaping)
         text = re.sub(r'(?<!\\)\\%', '%', text)
-        # Fix \xXX -> \u00XX (convert hex escapes to unicode escapes)
+        # Fix \xXX -> \u00XX (convert hex escapes to unicode)
         def hex_to_unicode(match):
-            hex_val = match.group(1)
             try:
-                # Convert hex to unicode code point
-                code_point = int(hex_val, 16)
-                # Convert to \uXXXX format
+                code_point = int(match.group(1), 16)
                 return f'\\u{code_point:04X}'
             except ValueError:
-                return match.group(0)  # Keep original if invalid
+                return match.group(0)
         text = re.sub(r'\\x([0-9a-fA-F]{2})', hex_to_unicode, text)
         return text
     
-    cleaned = fix_invalid_escapes(cleaned)
+    def try_parse(s):
+        """Try to parse JSON, return dict or None."""
+        try:
+            result = json.loads(s)
+            if isinstance(result, dict):
+                return result
+        except json.JSONDecodeError:
+            pass
+        return None
     
-    # Step 2: Try direct parse first
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        pass
+    def clean_and_repair(text):
+        """Apply standard cleaning and repairs."""
+        # Remove markdown fences
+        text = re.sub(r'^```(?:json)?\s*', '', text.strip())
+        text = re.sub(r'\s*```$', '', text)
+        # Fix invalid escapes
+        text = fix_invalid_escapes(text)
+        # Remove trailing commas
+        text = re.sub(r',(\s*[}\]])', r'\1', text)
+        return text
     
-    # Step 3: Try to extract JSON object from text (in case there's extra text before/after)
-    # Find the first { and last }
+    # Check for empty input
+    if not text or not text.strip():
+        raise json.JSONDecodeError("Empty response from LLM", text or "", 0)
+    
+    # Step 1: Clean the input
+    cleaned = clean_and_repair(text)
+    
+    # Step 2: Try direct parse
+    result = try_parse(cleaned)
+    if result:
+        return result
+    
+    # Step 3: CRITICAL - Handle missing opening brace
+    # This is the most common LLM error: output starts with "key": instead of {"key":
+    cleaned_stripped = cleaned.strip()
+    if cleaned_stripped.startswith('"') and not cleaned_stripped.startswith('{'):
+        # Add opening brace
+        with_brace = '{' + cleaned_stripped
+        
+        # Count braces to check balance
+        open_count = with_brace.count('{')
+        close_count = with_brace.count('}')
+        
+        if close_count > open_count:
+            # Remove extra closing braces from the end
+            extra = close_count - open_count
+            temp = with_brace.rstrip()
+            for _ in range(extra):
+                if temp.endswith('}'):
+                    temp = temp[:-1].rstrip()
+            with_brace = temp + '}'
+        elif close_count < open_count:
+            # Add missing closing braces
+            with_brace = with_brace + '}' * (open_count - close_count)
+        
+        # Clean and try parse
+        with_brace = clean_and_repair(with_brace)
+        result = try_parse(with_brace)
+        if result:
+            return result
+    
+    # Step 4: Try to extract JSON from first { to last }
     first_brace = cleaned.find('{')
     last_brace = cleaned.rfind('}')
     if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-        json_candidate = cleaned[first_brace:last_brace + 1]
-        # Remove trailing commas
-        repaired = re.sub(r',(\s*[}\]])', r'\1', json_candidate)
-        # Fix invalid escapes in candidate
-        repaired = fix_invalid_escapes(repaired)
-        try:
-            parsed = json.loads(repaired)
-            if isinstance(parsed, dict):
-                if required_field and required_field in parsed:
-                    return parsed
-                # If no required field specified or found, return anyway
-                return parsed
-        except json.JSONDecodeError:
-            pass
+        extracted = cleaned[first_brace:last_brace + 1]
+        extracted = clean_and_repair(extracted)
+        result = try_parse(extracted)
+        if result:
+            return result
     
-    # Step 4: Try to find ALL potential JSON objects and pick the valid one
-    # This handles cases where LLM restarts and outputs multiple JSONs concatenated
-    brace_positions = []
+    # Step 5: Try to find valid JSON objects using brace matching
+    # This handles cases with multiple JSON objects or extra text
+    brace_stack = []
+    json_start = None
+    candidates = []
+    
     for i, char in enumerate(cleaned):
         if char == '{':
-            brace_positions.append(('open', i))
+            if json_start is None:
+                json_start = i
+            brace_stack.append(i)
         elif char == '}':
-            brace_positions.append(('close', i))
+            if brace_stack:
+                brace_stack.pop()
+                if not brace_stack and json_start is not None:
+                    candidate = cleaned[json_start:i + 1]
+                    candidate = clean_and_repair(candidate)
+                    parsed = try_parse(candidate)
+                    if parsed:
+                        candidates.append(parsed)
+                    json_start = None
     
-    # Try to extract valid JSON objects, prioritizing ones with required field
-    valid_jsons = []
-    for i, (type_i, pos_i) in enumerate(brace_positions):
-        if type_i != 'open':
-            continue
-        # Try pairing with each subsequent closing brace
-        for j, (type_j, pos_j) in enumerate(brace_positions[i+1:], start=i+1):
-            if type_j != 'close':
-                continue
-            candidate = cleaned[pos_i:pos_j + 1]
-            # Fix invalid escapes and trailing commas
-            candidate = fix_invalid_escapes(candidate)
-            candidate = re.sub(r',(\s*[}\]])', r'\1', candidate)
-            try:
-                parsed = json.loads(candidate)
-                if isinstance(parsed, dict):
-                    valid_jsons.append(parsed)
-                    # If this JSON has the required field, prefer it immediately
-                    if required_field and required_field in parsed:
-                        return parsed
-            except json.JSONDecodeError:
-                continue
+    # Return the best candidate (prefer one with required field)
+    if required_field:
+        for candidate in candidates:
+            if required_field in candidate:
+                return candidate
+    if candidates:
+        return candidates[-1]  # Return last valid one
     
-    # Return the last valid JSON if any (often the complete one when LLM restarts)
-    if valid_jsons:
-        # Prefer one with required field, else return last one
-        for j in reversed(valid_jsons):
-            if required_field and required_field in j:
-                return j
-        return valid_jsons[-1]
+    # Step 6: Last resort - try wrapping entire content
+    if not cleaned_stripped.startswith('{'):
+        wrapped = '{' + cleaned_stripped
+        if not wrapped.rstrip().endswith('}'):
+            wrapped = wrapped + '}'
+        wrapped = clean_and_repair(wrapped)
+        result = try_parse(wrapped)
+        if result:
+            return result
     
-    # Step 5: Try to fix unterminated strings by closing them at the end
-    # This handles cases where LLM output was cut off mid-string
-    # Find unclosed strings in the JSON structure
-    repaired = cleaned
-    # Remove trailing commas
-    repaired = re.sub(r',(\s*[}\]])', r'\1', repaired)
-    # Fix invalid escapes
-    repaired = fix_invalid_escapes(repaired)
-    
-    # Try to close unterminated strings by finding the last unclosed quote
-    # This is a heuristic: if we have an odd number of quotes after the last complete key-value pair,
-    # we might have an unterminated string
+    # Step 7: Raise error with helpful message
     try:
-        return json.loads(repaired)
-    except json.JSONDecodeError as e:
-        # If error is about unterminated string, try to close it
-        if 'Unterminated string' in str(e) or 'Unterminated' in str(e.msg):
-            # Try to find the last opening quote and close it before the next structural character
-            # This is a best-effort attempt
-            last_quote_pos = repaired.rfind('"')
-            if last_quote_pos != -1:
-                # Check if this quote is followed by structural characters
-                remaining = repaired[last_quote_pos+1:]
-                # If there's no closing quote before the next }, ], or end of string, add one
-                if not re.search(r'^[^"}]*"', remaining):
-                    # Try inserting a closing quote before the next } or ]
-                    match = re.search(r'[}\]]', remaining)
-                    if match:
-                        insert_pos = last_quote_pos + 1 + match.start()
-                        repaired = repaired[:insert_pos] + '"' + repaired[insert_pos:]
-                        try:
-                            return json.loads(repaired)
-                        except json.JSONDecodeError:
-                            pass
-                    else:
-                        # No structural character found, try closing at the end
-                        repaired = repaired + '"'
-                        try:
-                            return json.loads(repaired)
-                        except json.JSONDecodeError:
-                            pass
-    
-    # Step 6: Final attempt - raise original error with helpful message
-    try:
-        json.loads(cleaned)  # This will raise the original error
+        json.loads(cleaned)
     except json.JSONDecodeError as e:
         raise json.JSONDecodeError(
             f"Failed to parse JSON after repair attempts. Original error: {e.msg}",

@@ -774,12 +774,14 @@ def compute_sigma_hat(method: str, params: dict, samples: List[float], L: float)
 
 
 def robust_parse_json(text: str) -> dict:
-    """
+    r"""
     Robustly parse JSON from LLM output, attempting to fix common formatting errors.
     
     Common issues fixed:
-    - Extra quotes after numeric values (e.g., "value": 15.739624" -> "value": 15.739624)
-    - Missing quotes around string values
+    - Missing opening brace (LLM outputs "rationale": "..." instead of {"rationale": "..."})
+    - Extra closing braces
+    - Extra quotes after numeric values
+    - Invalid escape sequences (\$, \%, \xXX)
     - Trailing commas
     - Markdown code fences
     
@@ -792,130 +794,136 @@ def robust_parse_json(text: str) -> dict:
     Raises:
         json.JSONDecodeError: If JSON cannot be parsed even after repair attempts
     """
-    # Step 1: Clean markdown code fences
-    cleaned = text.strip()
-    cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
-    cleaned = re.sub(r'\s*```$', '', cleaned)
     
-    # Step 1.5: Fix invalid escape sequences in JSON strings
-    # JSON only supports: \", \\, \/, \b, \f, \n, \r, \t, \uXXXX
-    # Fix common invalid escapes:
-    # - \$ -> $ (dollar sign doesn't need escaping in JSON)
-    # - \% -> % (percent sign doesn't need escaping in JSON)
-    # - \xXX -> convert to \u00XX (hex escape to unicode escape)
     def fix_invalid_escapes(text):
-        # Fix \$ -> $ (but not \\$ which is a literal backslash followed by $)
+        """Fix invalid JSON escape sequences."""
+        # Fix \$ -> $ (dollar sign doesn't need escaping)
         text = re.sub(r'(?<!\\)\\\$', '$', text)
-        # Fix \% -> % (percent sign doesn't need escaping in JSON)
+        # Fix \% -> % (percent sign doesn't need escaping)
         text = re.sub(r'(?<!\\)\\%', '%', text)
-        # Fix \xXX -> \u00XX (convert hex escapes to unicode escapes)
+        # Fix \xXX -> \u00XX (convert hex escapes to unicode)
         def hex_to_unicode(match):
-            hex_val = match.group(1)
             try:
-                # Convert hex to unicode code point
-                code_point = int(hex_val, 16)
-                # Convert to \uXXXX format
+                code_point = int(match.group(1), 16)
                 return f'\\u{code_point:04X}'
             except ValueError:
-                return match.group(0)  # Keep original if invalid
+                return match.group(0)
         text = re.sub(r'\\x([0-9a-fA-F]{2})', hex_to_unicode, text)
         return text
     
-    cleaned = fix_invalid_escapes(cleaned)
-    
-    # Step 2: Try direct parse first
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        pass  # Continue to repair attempts
-    
-    # Step 3: Fix common issues - extra quotes after numeric values
-    # Pattern 1: "value": number" -> "value": number (handles cases like "value": 15.739624" or "value": 17.606")
-    # This also handles cases without space: "value":15.739624" or "value":15.739624"}}
-    repaired = re.sub(r'"value"\s*:\s*([+-]?\d+\.?\d*)"([,}\s\]])', r'"value": \1\2', cleaned)
-    # Also fix invalid escapes in repaired version
-    repaired = fix_invalid_escapes(repaired)
-    
-    # Pattern 2: More aggressive - fix any numeric value followed by quote before closing brace/bracket
-    # Handles: "value": number"}} or "value": number"}
-    repaired = re.sub(r':\s*([+-]?\d+\.?\d*)"([,}\s]*[}\]]+)', r': \1\2', repaired)
-    
-    # Pattern 3: Handle cases where value is already quoted but shouldn't be (for numeric values)
-    # Pattern: "value": "number" -> "value": number (only if it's a valid number)
-    def fix_quoted_number(match):
-        key = match.group(1)
-        num_str = match.group(2)
-        suffix = match.group(3)
+    def try_parse(s):
+        """Try to parse JSON, return dict or None."""
         try:
-            # Try to parse as number
-            float(num_str)
-            return f'"{key}": {num_str}{suffix}'
-        except ValueError:
-            # Keep as string if not a valid number
-            return match.group(0)
-    
-    repaired = re.sub(r'"value"\s*:\s*"([+-]?\d+\.?\d*)"([,}\s\]])', fix_quoted_number, repaired)
-    
-    # Step 4: Remove trailing commas before closing braces/brackets
-    repaired = re.sub(r',(\s*[}\]])', r'\1', repaired)
-    
-    # Step 5: Try parsing repaired version
-    try:
-        return json.loads(repaired)
-    except json.JSONDecodeError:
-        pass
-    
-    # Step 6: Try to extract JSON object from text (in case there's extra text)
-    # Find the first { and last }
-    first_brace = repaired.find('{')
-    last_brace = repaired.rfind('}')
-    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-        json_candidate = repaired[first_brace:last_brace + 1]
-        try:
-            return json.loads(json_candidate)
+            result = json.loads(s)
+            if isinstance(result, dict):
+                return result
         except json.JSONDecodeError:
             pass
+        return None
     
-    # Step 6.5: Handle cases where JSON starts without opening brace
-    # Some LLMs output JSON without the opening { (e.g., just "rationale": "...")
-    # Try to wrap it in braces
+    def clean_and_repair(text):
+        """Apply standard cleaning and repairs."""
+        # Remove markdown fences
+        text = re.sub(r'^```(?:json)?\s*', '', text.strip())
+        text = re.sub(r'\s*```$', '', text)
+        # Fix invalid escapes
+        text = fix_invalid_escapes(text)
+        # Remove trailing commas
+        text = re.sub(r',(\s*[}\]])', r'\1', text)
+        return text
+    
+    # Step 1: Clean the input
+    cleaned = clean_and_repair(text)
+    
+    # Step 2: Try direct parse
+    result = try_parse(cleaned)
+    if result:
+        return result
+    
+    # Step 3: CRITICAL - Handle missing opening brace
+    # This is the most common LLM error: output starts with "key": instead of {"key":
     cleaned_stripped = cleaned.strip()
     if cleaned_stripped.startswith('"') and not cleaned_stripped.startswith('{'):
-        # Count opening and closing braces to see if we need to add one
-        open_braces = cleaned.count('{')
-        close_braces = cleaned.count('}')
-        if close_braces > open_braces:
-            # Remove extra closing brace(s) - keep only matching number
-            extra_closes = close_braces - open_braces
-            repaired = cleaned
-            for _ in range(extra_closes):
-                repaired = repaired.rsplit('}', 1)[0]
-            repaired = repaired + '}'
-        elif open_braces == 0:
-            # No braces at all, wrap the content
-            repaired = '{' + cleaned + '}'
-        else:
-            repaired = cleaned
-        # Fix invalid escapes in repaired version
-        repaired = fix_invalid_escapes(repaired)
-        # Remove trailing commas
-        repaired = re.sub(r',(\s*[}\]])', r'\1', repaired)
-        try:
-            return json.loads(repaired)
-        except json.JSONDecodeError:
-            pass
+        # Add opening brace
+        with_brace = '{' + cleaned_stripped
+        
+        # Count braces to check balance
+        open_count = with_brace.count('{')
+        close_count = with_brace.count('}')
+        
+        if close_count > open_count:
+            # Remove extra closing braces from the end
+            extra = close_count - open_count
+            # Remove extra } from the end, being careful to preserve structure
+            temp = with_brace.rstrip()
+            for _ in range(extra):
+                if temp.endswith('}'):
+                    temp = temp[:-1].rstrip()
+            with_brace = temp + '}'
+        elif close_count < open_count:
+            # Add missing closing braces
+            with_brace = with_brace + '}' * (open_count - close_count)
+        
+        # Clean and try parse
+        with_brace = clean_and_repair(with_brace)
+        result = try_parse(with_brace)
+        if result:
+            return result
     
-    # Step 7: Additional fix for any remaining quote issues after numeric values
-    # This is a catch-all for any pattern we might have missed
-    repaired2 = re.sub(r':\s*([+-]?\d+\.?\d*)"([,}\s\]])', r': \1\2', repaired)
-    try:
-        return json.loads(repaired2)
-    except json.JSONDecodeError:
-        pass
+    # Step 4: Try to extract JSON from first { to last }
+    first_brace = cleaned.find('{')
+    last_brace = cleaned.rfind('}')
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        extracted = cleaned[first_brace:last_brace + 1]
+        extracted = clean_and_repair(extracted)
+        result = try_parse(extracted)
+        if result:
+            return result
     
-    # Step 8: Final attempt - raise original error with helpful message
+    # Step 5: Try to find valid JSON objects using brace matching
+    # This handles cases with multiple JSON objects or extra text
+    brace_stack = []
+    json_start = None
+    candidates = []
+    
+    for i, char in enumerate(cleaned):
+        if char == '{':
+            if json_start is None:
+                json_start = i
+            brace_stack.append(i)
+        elif char == '}':
+            if brace_stack:
+                brace_stack.pop()
+                if not brace_stack and json_start is not None:
+                    candidate = cleaned[json_start:i + 1]
+                    candidate = clean_and_repair(candidate)
+                    parsed = try_parse(candidate)
+                    if parsed:
+                        candidates.append(parsed)
+                    json_start = None
+    
+    # Return the best candidate (prefer one with expected keys)
+    expected_keys = ['parameters', 'rationale', 'action', 'carry_over_insight']
+    for candidate in candidates:
+        for key in expected_keys:
+            if key in candidate:
+                return candidate
+    if candidates:
+        return candidates[-1]  # Return last valid one
+    
+    # Step 6: Last resort - try wrapping entire content
+    if not cleaned_stripped.startswith('{'):
+        wrapped = '{' + cleaned_stripped
+        if not wrapped.rstrip().endswith('}'):
+            wrapped = wrapped + '}'
+        wrapped = clean_and_repair(wrapped)
+        result = try_parse(wrapped)
+        if result:
+            return result
+    
+    # Step 7: Raise error with helpful message
     try:
-        json.loads(cleaned)  # This will raise the original error
+        json.loads(cleaned)
     except json.JSONDecodeError as e:
         raise json.JSONDecodeError(
             f"Failed to parse JSON after repair attempts. Original error: {e.msg}",
