@@ -7,10 +7,18 @@ Runs each strategy and calculates:
 - Min/Max rewards
 
 Deterministic strategies (or, perfect_score) run once.
-LLM-based strategies (llm, llm_to_or, simple_llm_to_or, or_to_llm) run 5 times.
+LLM-based strategies (llm, llm_to_or, or_to_llm) run once.
 
 Usage:
-  uv run python D:\\TextArena\\examples\\benchmark_all_strategies.py --promised-lead-time 0 --directory D:\\TextArena\\examples\\initial_synthetic_demand_files\\case1_iid_normal
+  uv run python D:\\TextArena\\examples\\benchmark_all_strategies.py --directory D:\\TextArena\\examples\\benchmark\\small_batch_4_1\\lead_time_0\\p01_stationary_iid\\v1_normal_100_25\\r1
+  
+  # Model can be specified (default: google/gemini-3-pro-preview)
+  uv run python D:\\TextArena\\examples\\benchmark_all_strategies.py --directory ... --model google/gemini-3-flash-preview
+  
+  # Promised lead time auto-detected from folder path:
+  #   lead_time_0 → promised_lead_time=0
+  #   lead_time_4 → promised_lead_time=4
+  #   lead_time_stochastic → promised_lead_time=2
 """
 
 import os
@@ -31,12 +39,11 @@ PYTHON_EXECUTABLE = sys.executable
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Scripts to benchmark (6 strategies)
+# Scripts to benchmark (5 strategies)
 SCRIPTS = {
     "or": "examples/or_csv_demo.py",
     "llm": "examples/llm_csv_demo.py",
     "llm_to_or": "examples/llm_to_or_csv_demo.py",
-    "simple_llm_to_or": "examples/simple_llm_to_or_demo.py",
     "or_to_llm": "examples/or_to_llm_csv_demo.py",
     "perfect_score": "examples/perfect_score.py",
 }
@@ -44,14 +51,40 @@ SCRIPTS = {
 # Deterministic scripts (run only once, no LLM involved)
 DETERMINISTIC_SCRIPTS = {"or", "perfect_score"}
 
-# LLM-based scripts (run multiple times due to stochasticity)
-LLM_SCRIPTS = {"llm", "llm_to_or", "simple_llm_to_or", "or_to_llm"}
+# LLM-based scripts (run once per instance, averaging across many instances)
+LLM_SCRIPTS = {"llm", "llm_to_or", "or_to_llm"}
 
 # Number of runs for LLM-based scripts
-NUM_RUNS = 5
+NUM_RUNS = 1
 
 # Base directory
 BASE_DIR = Path(__file__).parent.parent
+
+# Default model for OpenRouter
+DEFAULT_MODEL = "google/gemini-3-pro-preview"
+
+
+def detect_promised_lead_time(instance_dir: str) -> int:
+    """
+    Auto-detect promised lead time from folder path.
+    
+    Looks for lead_time_0, lead_time_4, or lead_time_stochastic in path.
+    Returns:
+        - 0 if 'lead_time_0' found in path
+        - 4 if 'lead_time_4' found in path
+        - 2 if 'lead_time_stochastic' found in path
+        - None if no pattern found
+    """
+    path_str = str(instance_dir).replace('\\', '/')
+    
+    if 'lead_time_0/' in path_str or '/lead_time_0' in path_str:
+        return 0
+    elif 'lead_time_4/' in path_str or '/lead_time_4' in path_str:
+        return 4
+    elif 'lead_time_stochastic/' in path_str or '/lead_time_stochastic' in path_str:
+        return 2
+    
+    return None
 
 
 def extract_reward_from_output(output: str) -> float:
@@ -97,7 +130,8 @@ def extract_reward_from_output(output: str) -> float:
 
 def run_script(script_path: str, run_num: int, script_name: str,
                promised_lead_time: int, instance_dir: str,
-               max_periods: int = None, base_dir: str = None) -> Tuple[float, str, str]:
+               max_periods: int = None, base_dir: str = None,
+               model_name: str = None) -> Tuple[float, str, str]:
     """
     Run a script for a given instance and return the reward and output.
     
@@ -107,6 +141,8 @@ def run_script(script_path: str, run_num: int, script_name: str,
     # Use provided paths or fall back to module-level constants
     if base_dir is None:
         base_dir = str(BASE_DIR)
+    if model_name is None:
+        model_name = DEFAULT_MODEL
     
     test_file = os.path.join(instance_dir, "test.csv")
     train_file = os.path.join(instance_dir, "train.csv")
@@ -120,8 +156,8 @@ def run_script(script_path: str, run_num: int, script_name: str,
             PYTHON_EXECUTABLE, script_path,
             "--demand-file", test_file,
         ]
-    else:
-        # Other scripts need full parameters
+    elif script_name == "or":
+        # OR doesn't need --model
         if not os.path.exists(train_file):
             return None, f"Train file not found: {train_file}", ""
         
@@ -130,6 +166,20 @@ def run_script(script_path: str, run_num: int, script_name: str,
             "--demand-file", test_file,
             "--promised-lead-time", str(promised_lead_time),
             "--real-instance-train", train_file,
+        ]
+        if max_periods is not None:
+            cmd.extend(["--max-periods", str(max_periods)])
+    else:
+        # LLM scripts need --model parameter
+        if not os.path.exists(train_file):
+            return None, f"Train file not found: {train_file}", ""
+        
+        cmd = [
+            PYTHON_EXECUTABLE, script_path,
+            "--demand-file", test_file,
+            "--promised-lead-time", str(promised_lead_time),
+            "--real-instance-train", train_file,
+            "--model", model_name,
         ]
         if max_periods is not None:
             cmd.extend(["--max-periods", str(max_periods)])
@@ -198,13 +248,14 @@ def run_script(script_path: str, run_num: int, script_name: str,
 
 def run_single_task(task_info):
     """Wrapper function for parallel execution."""
-    script_path, run_num, script_name, promised_lead_time, instance_dir, max_periods, base_dir = task_info
+    script_path, run_num, script_name, promised_lead_time, instance_dir, max_periods, base_dir, model_name = task_info
     return (script_name, run_num), run_script(
-        script_path, run_num, script_name, promised_lead_time, instance_dir, max_periods, base_dir
+        script_path, run_num, script_name, promised_lead_time, instance_dir, max_periods, base_dir, model_name
     )
 
 
-def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int = None, max_workers: int = None):
+def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int = None, 
+                  max_workers: int = None, model_name: str = None):
     """Run all benchmarks and collect results."""
     
     # Validate instance directory
@@ -249,9 +300,10 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
     print(f"Instance directory: {instance_dir}")
     print(f"Instance name: {instance_name}")
     print(f"Promised lead time: {promised_lead_time}")
+    print(f"Model: {model_name}")
     print(f"Strategies: {', '.join(SCRIPTS.keys())}")
     print(f"  - Deterministic (1 run each): {', '.join(DETERMINISTIC_SCRIPTS)}")
-    print(f"  - LLM-based ({NUM_RUNS} runs each): {', '.join(LLM_SCRIPTS)}")
+    print(f"  - LLM-based ({NUM_RUNS} run each): {', '.join(LLM_SCRIPTS)}")
     print(f"Total runs: {total_runs}")
     if max_periods:
         print(f"Max periods: {max_periods}")
@@ -276,6 +328,10 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
     
     completed_runs = 0
     
+    # Use default model if not specified
+    if model_name is None:
+        model_name = DEFAULT_MODEL
+    
     # Prepare all LLM tasks upfront
     all_llm_tasks = []
     for script_name, script_path in SCRIPTS.items():
@@ -285,7 +341,7 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
                 for run_num in range(1, NUM_RUNS + 1):
                     all_llm_tasks.append((
                         str(script_full_path), run_num, script_name,
-                        promised_lead_time, instance_dir, max_periods, str(BASE_DIR)
+                        promised_lead_time, instance_dir, max_periods, str(BASE_DIR), model_name
                     ))
     
     # Run all LLM scripts in parallel with batching to prevent system overload
@@ -350,7 +406,7 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
         
         reward, error, output = run_script(
             str(script_full_path), 1, script_name,
-            promised_lead_time, instance_dir, max_periods
+            promised_lead_time, instance_dir, max_periods, model_name=model_name
         )
         
         if error:
@@ -408,6 +464,7 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
         'instance_dir': instance_dir,
         'instance_name': instance_name,
         'promised_lead_time': promised_lead_time,
+        'model': model_name,
         'num_runs_llm': NUM_RUNS,
         'num_runs_deterministic': 1,
         'max_periods': max_periods,
@@ -441,21 +498,30 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description='Benchmark all strategies (or, llm, llm_to_or, simple_llm_to_or, or_to_llm, perfect_score)',
+        description='Benchmark all strategies (or, llm, llm_to_or, or_to_llm, perfect_score)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Strategies:
   - Deterministic (1 run): or, perfect_score
-  - LLM-based (5 runs): llm, llm_to_or, simple_llm_to_or, or_to_llm
+  - LLM-based (1 run): llm, llm_to_or, or_to_llm
+
+Promised lead time auto-detection:
+  - lead_time_0 folder → promised_lead_time=0
+  - lead_time_4 folder → promised_lead_time=4
+  - lead_time_stochastic folder → promised_lead_time=2
 
 Example:
-  python benchmark_all_strategies.py --promised-lead-time 1 --directory D:\\TextArena\\examples\\initial_synthetic_demand_files\\case1_iid_normal
+  python benchmark_all_strategies.py --directory D:\\TextArena\\examples\\benchmark\\small_batch_4_1\\lead_time_0\\p01_stationary_iid\\v1_normal_100_25\\r1
+  python benchmark_all_strategies.py --directory ... --model google/gemini-3-flash-preview
         """
     )
-    parser.add_argument('--promised-lead-time', type=int, required=True,
-                       help='Promised lead time in periods (required)')
+    parser.add_argument('--promised-lead-time', type=int, default=None,
+                       help='Promised lead time in periods. If not provided, auto-detected from folder path '
+                            '(lead_time_0→0, lead_time_4→4, lead_time_stochastic→2)')
     parser.add_argument('--directory', type=str, required=True,
                        help='Path to instance directory containing test.csv and train.csv (required)')
+    parser.add_argument('--model', type=str, default=DEFAULT_MODEL,
+                       help=f'OpenRouter model name (default: {DEFAULT_MODEL})')
     parser.add_argument('--max-periods', type=int, default=None,
                        help='Maximum number of periods to run per test. Default: None (runs all periods)')
     parser.add_argument('--max-workers', type=int, default=None,
@@ -464,9 +530,22 @@ Example:
                              'Increase cautiously based on your API quota.')
     args = parser.parse_args()
     
+    # Auto-detect promised_lead_time if not provided
+    promised_lead_time = args.promised_lead_time
+    if promised_lead_time is None:
+        detected = detect_promised_lead_time(args.directory)
+        if detected is not None:
+            promised_lead_time = detected
+            print(f"Auto-detected promised_lead_time={promised_lead_time} from folder path")
+        else:
+            print("Error: --promised-lead-time not provided and could not auto-detect from path.")
+            print("Please provide --promised-lead-time or use a folder with lead_time_0, lead_time_4, or lead_time_stochastic in path.")
+            sys.exit(1)
+    
     benchmark_all(
-        promised_lead_time=args.promised_lead_time,
+        promised_lead_time=promised_lead_time,
         instance_dir=args.directory,
         max_periods=args.max_periods,
-        max_workers=args.max_workers
+        max_workers=args.max_workers,
+        model_name=args.model
     )

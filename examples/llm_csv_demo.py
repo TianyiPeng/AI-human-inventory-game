@@ -1,4 +1,4 @@
-﻿"""
+"""
 Vending Machine demo with CSV-driven demand.
 
 This demo uses:
@@ -49,104 +49,27 @@ def _safe_print(text: str) -> None:
 
 class LLMAgent(Agent):
     """
-    Universal LLM Agent supporting multiple providers (OpenAI, Gemini, OpenRouter-Gemini).
+    LLM Agent using OpenRouter API.
     
     Required environment variables:
-    - LLM_PROVIDER: 'openai', 'gemini', or 'openrouter-gemini' (required, no default)
-    - OPENAI_API_KEY: Required when LLM_PROVIDER='openai'
-    - GEMINI_API_KEY: Required when LLM_PROVIDER='gemini'
-    - OPENROUTER_API_KEY: Required when LLM_PROVIDER='openrouter-gemini'
+    - OPENROUTER_API_KEY: API key for OpenRouter
     
     Usage (PowerShell):
-        $env:LLM_PROVIDER="openai"
-        $env:OPENAI_API_KEY="sk-xxx"
-        python llm_csv_demo.py --demand-file ...
-        
-        $env:LLM_PROVIDER="gemini"  
-        $env:GEMINI_API_KEY="xxx"
-        python llm_csv_demo.py --demand-file ...
-        
-        $env:LLM_PROVIDER="openrouter-gemini"
         $env:OPENROUTER_API_KEY="sk-or-xxx"
-        python llm_csv_demo.py --demand-file ...
+        python llm_csv_demo.py --demand-file ... --model google/gemini-3-pro-preview
     """
 
     def __init__(
         self,
         system_prompt: str,
+        model_name: str = "google/gemini-3-pro-preview",
         reasoning_effort: str = "low",
-        text_verbosity: str = "low",
     ):
         super().__init__()
         self.system_prompt = system_prompt
+        self.model_name = model_name
         self.reasoning_effort = reasoning_effort
-        self.text_verbosity = text_verbosity
         
-        # Get provider from environment variable (required)
-        self.provider = os.getenv("LLM_PROVIDER")
-        if not self.provider:
-            raise ValueError(
-                "LLM_PROVIDER environment variable not set.\n"
-                "Please set it to 'openai' or 'gemini'.\n"
-                "PowerShell example: $env:LLM_PROVIDER=\"openai\""
-            )
-        
-        self.provider = self.provider.lower().strip()
-        
-        if self.provider == "openai":
-            self._init_openai()
-        elif self.provider == "gemini":
-            self._init_gemini()
-        elif self.provider == "openrouter-gemini":
-            self._init_openrouter_gemini()
-        else:
-            raise ValueError(
-                f"Unsupported LLM_PROVIDER: '{self.provider}'.\n"
-                "Supported providers: 'openai', 'gemini', 'openrouter-gemini'"
-            )
-    
-    def _init_openai(self):
-        """Initialize OpenAI client."""
-        try:
-            from openai import OpenAI
-        except ImportError as exc:
-            raise ImportError(
-                "OpenAI package is required. Install it with: pip install openai"
-            ) from exc
-
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "OPENAI_API_KEY environment variable not set.\n"
-                "PowerShell example: $env:OPENAI_API_KEY=\"sk-xxx\""
-            )
-
-        self.model_name = "gpt-5-mini"
-        self.client = OpenAI(api_key=api_key)
-    
-    def _init_gemini(self):
-        """Initialize Gemini client."""
-        try:
-            from google import genai
-            from google.genai import types
-        except ImportError as exc:
-            raise ImportError(
-                "Google GenAI package is required. Install it with: pip install google-genai"
-            ) from exc
-
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "GEMINI_API_KEY environment variable not set.\n"
-                "PowerShell example: $env:GEMINI_API_KEY=\"xxx\""
-            )
-
-        self.model_name = "gemini-3-flash-preview"
-        self.client = genai.Client(api_key=api_key)
-        self._gemini_types = types  # Store types module for later use
-    
-    def _init_openrouter_gemini(self):
-        """Initialize OpenRouter client for Gemini."""
         try:
             from openai import OpenAI
         except ImportError as exc:
@@ -161,13 +84,12 @@ class LLMAgent(Agent):
                 "PowerShell example: $env:OPENROUTER_API_KEY=\"sk-or-xxx\""
             )
 
-        self.model_name = "google/gemini-3-flash-preview"
         self.client = OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=api_key,
             default_headers={
-                "HTTP-Referer": "https://github.com/your-repo",  # Optional, for tracking
-                "X-Title": "TextArena VM Demo",  # Optional, for tracking
+                "HTTP-Referer": "https://github.com/textarena",
+                "X-Title": "TextArena VM Benchmark",
             }
         )
 
@@ -175,55 +97,6 @@ class LLMAgent(Agent):
         if not isinstance(observation, str):
             raise ValueError(f"Observation must be a string. Received type: {type(observation)}")
 
-        if self.provider == "openai":
-            return self._call_openai(observation)
-        elif self.provider == "gemini":
-            return self._call_gemini(observation)
-        else:  # openrouter-gemini
-            return self._call_openrouter_gemini(observation)
-    
-    def _call_openai(self, observation: str) -> str:
-        """Call OpenAI Responses API."""
-        request_payload = {
-            "model": self.model_name,
-            "input": [
-                {"role": "system", "content": [{"type": "input_text", "text": self.system_prompt}]},
-                {"role": "user", "content": [{"type": "input_text", "text": observation}]},
-            ],
-        }
-
-        if self.reasoning_effort:
-            request_payload["reasoning"] = {"effort": self.reasoning_effort}
-        if self.text_verbosity:
-            request_payload["text"] = {"verbosity": self.text_verbosity}
-
-        response = self.client.responses.create(**request_payload)
-        return response.output_text.strip()
-    
-    def _call_gemini(self, observation: str) -> str:
-        """Call Gemini API with thinking_level config."""
-        # Combine system prompt and observation
-        full_prompt = f"Instructions: {self.system_prompt}\n\n{observation}"
-        
-        # Map reasoning_effort to Gemini's thinking_level
-        # OpenAI: low/medium/high -> Gemini: low/medium/high (minimal also available)
-        thinking_level = self.reasoning_effort if self.reasoning_effort else "low"
-        
-        response = self.client.models.generate_content(
-            model=self.model_name,
-            contents=full_prompt,
-            config=self._gemini_types.GenerateContentConfig(
-                thinking_config=self._gemini_types.ThinkingConfig(
-                    thinking_level=thinking_level
-                )
-            )
-        )
-        return response.text.strip()
-    
-    def _call_openrouter_gemini(self, observation: str) -> str:
-        """Call OpenRouter API for Gemini with reasoning config."""
-        # Map reasoning_effort to OpenRouter's reasoning.effort
-        # OpenRouter uses reasoning object with effort field: "low", "medium", "high"
         reasoning_effort = self.reasoning_effort if self.reasoning_effort else "low"
         
         messages = [
@@ -232,14 +105,13 @@ class LLMAgent(Agent):
         ]
         
         # OpenRouter uses reasoning object format
-        # Try passing reasoning directly first
         try:
             response = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
                 reasoning={
                     "effort": reasoning_effort,
-                    "exclude": False  # Set to True if you want model to think but not include reasoning in output
+                    "exclude": False
                 }
             )
             return response.choices[0].message.content.strip()
@@ -526,7 +398,8 @@ class CSVDemandPlayer:
 
 
 def make_vm_agent(initial_samples: dict = None, promised_lead_time: int = 0, 
-                  human_feedback_enabled: bool = False, guidance_enabled: bool = False):
+                  human_feedback_enabled: bool = False, guidance_enabled: bool = False,
+                  model_name: str = "google/gemini-3-pro-preview"):
     """Create VM agent with updated prompt for profit-based system with exact dates."""
     
     # Extract item IDs to show in prompt
@@ -648,9 +521,11 @@ def make_vm_agent(initial_samples: dict = None, promised_lead_time: int = 0,
     # Add historical demand data if provided
     if initial_samples:
         system += "=== HISTORICAL DEMAND SAMPLES ===\n"
-        system += "Use these unified samples to ground your prior before any real demand is observed:\n"
+        system += "Use these samples to ground your prior before any real demand is observed:\n"
         for item_id, samples in initial_samples.items():
-            system += f"- {item_id}: {samples}\n"
+            system += f"- {item_id}:\n"
+            for date, demand in samples:
+                system += f"    {date}: {demand}\n"
         system += "\n"
     
     # Create example format with actual item IDs
@@ -709,8 +584,7 @@ def make_vm_agent(initial_samples: dict = None, promised_lead_time: int = 0,
         f"Use the exact item ID when populating \"action\" (current ID(s): {items_str or primary_item}). "
         "Do not output extra text outside the JSON."
     )
-    # return ta.agents.OpenAIAgent(model_name="gpt-4o-mini", system_prompt=system, temperature=0)
-    return LLMAgent(system_prompt=system)
+    return LLMAgent(system_prompt=system, model_name=model_name)
 
 
 def main():
@@ -719,6 +593,8 @@ def main():
                        help='Path to CSV file with demand data')
     parser.add_argument('--promised-lead-time', type=int, default=0,
                        help='Promised lead time shown to LLM in periods (default: 0). Actual lead time in CSV may differ.')
+    parser.add_argument('--model', type=str, default='google/gemini-3-pro-preview',
+                       help='OpenRouter model name (default: google/gemini-3-pro-preview)')
     parser.add_argument('--human-feedback', action='store_true',
                        help='Enable daily human feedback on agent decisions (Mode 1)')
     parser.add_argument('--guidance-frequency', type=int, default=0,
@@ -729,41 +605,13 @@ def main():
                        help='Maximum number of periods to run (limits NUM_DAYS). If None, uses all periods from CSV.')
     args = parser.parse_args()
     
-    # Check LLM provider environment variable
-    provider = os.getenv("LLM_PROVIDER")
-    if not provider:
-        print("Error: LLM_PROVIDER environment variable not set.")
-        print("Please set it to 'openai', 'gemini', or 'openrouter-gemini'.")
-        print("PowerShell examples:")
-        print('  $env:LLM_PROVIDER="openai"')
-        print('  $env:OPENAI_API_KEY="sk-xxx"')
-        print("  or")
-        print('  $env:LLM_PROVIDER="gemini"')
-        print('  $env:GEMINI_API_KEY="xxx"')
-        print("  or")
-        print('  $env:LLM_PROVIDER="openrouter-gemini"')
-        print('  $env:OPENROUTER_API_KEY="sk-or-xxx"')
-        sys.exit(1)
-    
-    provider = provider.lower().strip()
-    if provider == "openai" and not os.getenv("OPENAI_API_KEY"):
-        print("Error: OPENAI_API_KEY environment variable not set.")
-        print('PowerShell example: $env:OPENAI_API_KEY="sk-xxx"')
-        sys.exit(1)
-    elif provider == "gemini" and not os.getenv("GEMINI_API_KEY"):
-        print("Error: GEMINI_API_KEY environment variable not set.")
-        print('PowerShell example: $env:GEMINI_API_KEY="xxx"')
-        sys.exit(1)
-    elif provider == "openrouter-gemini" and not os.getenv("OPENROUTER_API_KEY"):
+    # Check OpenRouter API key
+    if not os.getenv("OPENROUTER_API_KEY"):
         print("Error: OPENROUTER_API_KEY environment variable not set.")
         print('PowerShell example: $env:OPENROUTER_API_KEY="sk-or-xxx"')
         sys.exit(1)
-    elif provider not in ("openai", "gemini", "openrouter-gemini"):
-        print(f"Error: Unsupported LLM_PROVIDER: '{provider}'")
-        print("Supported providers: 'openai', 'gemini', 'openrouter-gemini'")
-        sys.exit(1)
     
-    print(f"Using LLM provider: {provider}")
+    print(f"Using model: {args.model}")
     
     # Create environment
     env = ta.make(env_id="VendingMachine-v0")
@@ -782,36 +630,37 @@ def main():
     for config in item_configs:
         env.add_item(**config)
     
-    # Generate initial demand samples
-    if args.real_instance_train:
-        # Load from real instance train.csv
-        try:
-            train_df = pd.read_csv(args.real_instance_train)
-            # Extract demand samples from train.csv (H&M format: exact_dates_{item_id}, demand_{item_id})
-            item_ids = csv_player.get_item_ids()
-            if item_ids:
-                first_item = item_ids[0]
-                demand_col = f'demand_{first_item}'
-                if demand_col in train_df.columns:
-                    train_samples = train_df[demand_col].tolist()
-                    initial_samples = {item_id: train_samples for item_id in item_ids}
-                    print(f"\nUsing initial samples from train.csv: {args.real_instance_train}")
-                    print(f"  Samples: {train_samples}")
-                    print(f"  Mean: {sum(train_samples)/len(train_samples):.1f}, Count: {len(train_samples)}")
-                else:
-                    raise ValueError(f"Column {demand_col} not found in train.csv")
-            else:
-                raise ValueError("No items detected in test CSV")
-        except Exception as e:
-            print(f"Error loading train.csv: {e}")
-            print("Falling back to default unified samples")
-            unified_samples = [112, 97, 116, 138, 94]
-            initial_samples = {item_id: unified_samples.copy() for item_id in csv_player.get_item_ids()}
+    # Generate initial demand samples with dates from train.csv
+    if not args.real_instance_train:
+        print("Error: --real-instance-train is required to load historical samples")
+        sys.exit(1)
+    
+    train_df = pd.read_csv(args.real_instance_train)
+    # Extract demand samples from train.csv (format: exact_dates_{item_id}, demand_{item_id})
+    item_ids = csv_player.get_item_ids()
+    if not item_ids:
+        raise ValueError("No items detected in test CSV")
+    
+    first_item = item_ids[0]
+    demand_col = f'demand_{first_item}'
+    date_col = f'exact_dates_{first_item}'
+    
+    if demand_col not in train_df.columns:
+        raise ValueError(f"Column {demand_col} not found in train.csv")
+    
+    train_demands = train_df[demand_col].tolist()
+    # Extract dates if available, otherwise use generic period labels
+    if date_col in train_df.columns:
+        train_dates = train_df[date_col].tolist()
     else:
-        # Use default unified samples for synthetic instances
-        unified_samples = [112, 97, 116, 138, 94]
-        initial_samples = {item_id: unified_samples.copy() for item_id in csv_player.get_item_ids()}
-        print(f"\nUsing default unified initial samples: {unified_samples}")
+        train_dates = [f"Period_{i+1}" for i in range(len(train_demands))]
+    
+    # Store as list of (date, demand) tuples
+    train_samples = list(zip(train_dates, train_demands))
+    initial_samples = {item_id: train_samples for item_id in item_ids}
+    print(f"\nUsing initial samples from train.csv: {args.real_instance_train}")
+    print(f"  Samples: {train_samples}")
+    print(f"  Mean: {sum(train_demands)/len(train_demands):.1f}, Count: {len(train_demands)}")
     print(f"Promised lead time (shown to LLM): {args.promised_lead_time} periods")
     print(f"Note: Actual lead times in CSV may differ. LLM must infer actual lead time from arrivals.")
     
@@ -829,7 +678,8 @@ def main():
         initial_samples=initial_samples,
         promised_lead_time=args.promised_lead_time,
         human_feedback_enabled=args.human_feedback,
-        guidance_enabled=(args.guidance_frequency > 0)
+        guidance_enabled=(args.guidance_frequency > 0),
+        model_name=args.model
     )
     
     # Wrap with HumanFeedbackAgent if human-in-the-loop modes are enabled
