@@ -101,12 +101,17 @@ class GPT5MiniAgent(Agent):
 
 class LLMAgent(Agent):
     """
-    LLM Agent using OpenRouter API.
+    LLM Agent supporting OpenAI and OpenRouter APIs.
     
-    Required environment variables:
-    - OPENROUTER_API_KEY: API key for OpenRouter
+    - If model starts with "gpt", uses OpenAI API (requires OPENAI_API_KEY)
+    - Otherwise, uses OpenRouter API (requires OPENROUTER_API_KEY)
     
     Usage (PowerShell):
+        # For OpenAI (gpt-5-mini):
+        $env:OPENAI_API_KEY="sk-xxx"
+        python or_to_llm_csv_demo.py --demand-file ... --model gpt-5-mini
+        
+        # For OpenRouter:
         $env:OPENROUTER_API_KEY="sk-or-xxx"
         python or_to_llm_csv_demo.py --demand-file ... --model google/gemini-3-pro-preview
     """
@@ -126,54 +131,83 @@ class LLMAgent(Agent):
             from openai import OpenAI
         except ImportError as exc:
             raise ImportError(
-                "OpenAI package is required for OpenRouter. Install it with: pip install openai"
+                "OpenAI package is required. Install it with: pip install openai"
             ) from exc
 
-        api_key = os.getenv("OPENROUTER_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "OPENROUTER_API_KEY environment variable not set.\n"
-                "PowerShell example: $env:OPENROUTER_API_KEY=\"sk-or-xxx\""
+        # Determine provider based on model name
+        self.use_openai = model_name.startswith("gpt")
+        
+        if self.use_openai:
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError(
+                    "OPENAI_API_KEY environment variable not set.\n"
+                    "PowerShell example: $env:OPENAI_API_KEY=\"sk-xxx\""
+                )
+            self.client = OpenAI(api_key=api_key)
+        else:
+            api_key = os.getenv("OPENROUTER_API_KEY")
+            if not api_key:
+                raise ValueError(
+                    "OPENROUTER_API_KEY environment variable not set.\n"
+                    "PowerShell example: $env:OPENROUTER_API_KEY=\"sk-or-xxx\""
+                )
+            self.client = OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=api_key,
+                default_headers={
+                    "HTTP-Referer": "https://github.com/textarena",
+                    "X-Title": "TextArena VM Benchmark",
+                }
             )
 
-        self.client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=api_key,
-            default_headers={
-                "HTTP-Referer": "https://github.com/textarena",
-                "X-Title": "TextArena VM Benchmark",
-            }
-        )
+    def __call__(self, observation: str) -> str:
+        if not isinstance(observation, str):
+            raise ValueError(f"Observation must be a string. Received type: {type(observation)}")
 
         messages = [
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": observation}
         ]
         
-        # OpenRouter uses reasoning object format
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                reasoning={
-                    "effort": reasoning_effort,
-                    "exclude": False
-                }
-            )
-            return response.choices[0].message.content.strip()
-        except TypeError:
-            # If direct reasoning parameter doesn't work, use extra_body
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=messages,
-                extra_body={
-                    "reasoning": {
+        if self.use_openai:
+            # OpenAI Responses API for gpt-5-mini
+            reasoning_effort = self.reasoning_effort if self.reasoning_effort else "low"
+            request_payload = {
+                "model": self.model_name,
+                "input": [
+                    {"role": "system", "content": [{"type": "input_text", "text": self.system_prompt}]},
+                    {"role": "user", "content": [{"type": "input_text", "text": observation}]},
+                ],
+                "reasoning": {"effort": reasoning_effort},
+            }
+            response = self.client.responses.create(**request_payload)
+            return response.output_text.strip()
+        else:
+            # OpenRouter API
+            reasoning_effort = self.reasoning_effort if self.reasoning_effort else "low"
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=messages,
+                    reasoning={
                         "effort": reasoning_effort,
                         "exclude": False
                     }
-                }
-            )
-            return response.choices[0].message.content.strip()
+                )
+                return response.choices[0].message.content.strip()
+            except TypeError:
+                response = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=messages,
+                    extra_body={
+                        "reasoning": {
+                            "effort": reasoning_effort,
+                            "exclude": False
+                        }
+                    }
+                )
+                return response.choices[0].message.content.strip()
 
 
 def inject_carry_over_insights(observation: str, insights: dict) -> str:
@@ -909,13 +943,19 @@ def main():
                        help='Maximum number of periods to run (limits NUM_DAYS). If None, uses all periods from CSV.')
     args = parser.parse_args()
     
-    # Check OpenRouter API key
-    if not os.getenv("OPENROUTER_API_KEY"):
-        print("Error: OPENROUTER_API_KEY environment variable not set.")
-        print('PowerShell example: $env:OPENROUTER_API_KEY="sk-or-xxx"')
-        sys.exit(1)
-    
-    print(f"Using model: {args.model}")
+    # Check API key based on model
+    if args.model.startswith("gpt"):
+        if not os.getenv("OPENAI_API_KEY"):
+            print("Error: OPENAI_API_KEY environment variable not set.")
+            print('PowerShell example: $env:OPENAI_API_KEY="sk-xxx"')
+            sys.exit(1)
+        print(f"Using OpenAI model: {args.model}")
+    else:
+        if not os.getenv("OPENROUTER_API_KEY"):
+            print("Error: OPENROUTER_API_KEY environment variable not set.")
+            print('PowerShell example: $env:OPENROUTER_API_KEY="sk-or-xxx"')
+            sys.exit(1)
+        print(f"Using OpenRouter model: {args.model}")
     
     # Create environment
     env = ta.make(env_id="VendingMachine-v0")

@@ -131,19 +131,20 @@ def extract_reward_from_output(output: str) -> float:
 def run_script(script_path: str, run_num: int, script_name: str,
                promised_lead_time: int, instance_dir: str,
                max_periods: int = None, base_dir: str = None,
-               model_name: str = None) -> Tuple[float, str, str]:
+               model_name: str = None, perfect_reward: float = None) -> Tuple[float, str, str]:
     """
     Run a script for a given instance and return the reward and output.
     
     Returns:
         (reward, error_message, output)
     """
-    # Use provided paths or fall back to module-level constants
+    # ... (same setup) ...
     if base_dir is None:
         base_dir = str(BASE_DIR)
     if model_name is None:
         model_name = DEFAULT_MODEL
     
+    # ... (same cmd construction) ...
     test_file = os.path.join(instance_dir, "test.csv")
     train_file = os.path.join(instance_dir, "train.csv")
     
@@ -195,6 +196,10 @@ def run_script(script_path: str, run_num: int, script_name: str,
         )
         
         output = result.stdout + result.stderr
+        
+        # Add perfect reward to output for logging
+        if perfect_reward is not None:
+            output += f"\n\n{'='*40}\nREFERENCE: Perfect Score: ${perfect_reward:.2f}\n{'='*40}\n"
         
         # Save output to log file
         log_filename = f"{script_name}_{run_num}.txt"
@@ -248,9 +253,9 @@ def run_script(script_path: str, run_num: int, script_name: str,
 
 def run_single_task(task_info):
     """Wrapper function for parallel execution."""
-    script_path, run_num, script_name, promised_lead_time, instance_dir, max_periods, base_dir, model_name = task_info
+    script_path, run_num, script_name, promised_lead_time, instance_dir, max_periods, base_dir, model_name, perfect_reward = task_info
     return (script_name, run_num), run_script(
-        script_path, run_num, script_name, promised_lead_time, instance_dir, max_periods, base_dir, model_name
+        script_path, run_num, script_name, promised_lead_time, instance_dir, max_periods, base_dir, model_name, perfect_reward
     )
 
 
@@ -326,11 +331,29 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
     results = defaultdict(list)
     errors = defaultdict(list)
     
-    completed_runs = 0
-    
     # Use default model if not specified
     if model_name is None:
         model_name = DEFAULT_MODEL
+    
+    # 1. Run perfect_score first to get a baseline for all logs
+    perfect_reward = None
+    if "perfect_score" in SCRIPTS:
+        print(f"\n[{'perfect_score'}] Running to get baseline...")
+        script_path = BASE_DIR / SCRIPTS["perfect_score"]
+        if script_path.exists():
+            rew, err, out = run_script(
+                str(script_path), 1, "perfect_score",
+                promised_lead_time, instance_dir, max_periods, model_name=model_name
+            )
+            if not err:
+                perfect_reward = rew
+                results["perfect_score"].append(rew)
+                print(f"[{'perfect_score'}] Baseline reward: ${rew:.2f}")
+            else:
+                print(f"[{'perfect_score'}] Error getting baseline: {err}")
+                errors["perfect_score"].append(err)
+
+    completed_runs = len(results["perfect_score"]) + len(errors["perfect_score"])
     
     # Prepare all LLM tasks upfront
     all_llm_tasks = []
@@ -341,7 +364,7 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
                 for run_num in range(1, NUM_RUNS + 1):
                     all_llm_tasks.append((
                         str(script_full_path), run_num, script_name,
-                        promised_lead_time, instance_dir, max_periods, str(BASE_DIR), model_name
+                        promised_lead_time, instance_dir, max_periods, str(BASE_DIR), model_name, perfect_reward
                     ))
     
     # Run all LLM scripts in parallel with batching to prevent system overload
@@ -382,7 +405,8 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
                                 print(f"[{script_name}] Run {run_num}/{NUM_RUNS} ({completed_runs}/{len(all_llm_tasks)}): ERROR: {error}")
                                 errors[script_name].append(error)
                             else:
-                                print(f"[{script_name}] Run {run_num}/{NUM_RUNS} ({completed_runs}/{len(all_llm_tasks)}): Reward: ${reward:.2f} (log saved)")
+                                perf_str = f" (Perfect: ${perfect_reward:.2f})" if perfect_reward is not None else ""
+                                print(f"[{script_name}] Run {run_num}/{NUM_RUNS} ({completed_runs}/{len(all_llm_tasks)}): Reward: ${reward:.2f}{perf_str} (log saved)")
                                 results[script_name].append(reward)
                         except Exception as e:
                             print(f"[{script_name}] Run {run_num}/{NUM_RUNS} ({completed_runs}/{len(all_llm_tasks)}): EXCEPTION: {str(e)}")
@@ -394,6 +418,9 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
     print(f"{'='*80}\n")
     
     for script_name in DETERMINISTIC_SCRIPTS:
+        if script_name == "perfect_score":
+            continue # Already ran first
+            
         script_path = SCRIPTS[script_name]
         script_full_path = BASE_DIR / script_path
         
@@ -406,14 +433,16 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
         
         reward, error, output = run_script(
             str(script_full_path), 1, script_name,
-            promised_lead_time, instance_dir, max_periods, model_name=model_name
+            promised_lead_time, instance_dir, max_periods, model_name=model_name,
+            perfect_reward=perfect_reward
         )
         
         if error:
             print(f"ERROR: {error}")
             errors[script_name].append(error)
         else:
-            print(f"Reward: ${reward:.2f} (log saved)")
+            perf_str = f" (Perfect: ${perfect_reward:.2f})" if perfect_reward is not None else ""
+            print(f"Reward: ${reward:.2f}{perf_str} (log saved)")
             results[script_name].append(reward)
     
     # Calculate statistics
@@ -422,28 +451,35 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
     print("=" * 80)
     print(f"\nInstance: {instance_name}")
     print(f"Promised Lead Time: {promised_lead_time}")
+    if perfect_reward is not None:
+        print(f"Perfect Score: ${perfect_reward:.2f}")
     print("-" * 80)
-    print(f"{'Strategy':<20} {'Avg Reward':<15} {'Std Dev':<15} {'Min':<15} {'Max':<15} {'Runs':<10}")
+    print(f"{'Strategy':<20} {'Avg Reward':<15} {'Ratio':<10} {'Std Dev':<12} {'Min':<12} {'Max':<12} {'Runs':<6}")
     print("-" * 80)
     
     overall_stats = {}
     for script_name in SCRIPTS.keys():
         rewards = results[script_name]
         if rewards:
+            mean_reward = np.mean(rewards)
+            # Calculate ratio relative to perfect score
+            ratio = mean_reward / perfect_reward if perfect_reward and perfect_reward > 0 else None
             overall_stats[script_name] = {
-                'mean': np.mean(rewards),
+                'mean': mean_reward,
                 'std': np.std(rewards) if len(rewards) > 1 else 0.0,
                 'min': np.min(rewards),
                 'max': np.max(rewards),
                 'count': len(rewards),
+                'ratio': ratio,
             }
-            print(f"{script_name:<20} ${overall_stats[script_name]['mean']:<14.2f} "
-                  f"${overall_stats[script_name]['std']:<14.2f} "
-                  f"${overall_stats[script_name]['min']:<14.2f} "
-                  f"${overall_stats[script_name]['max']:<14.2f} "
-                  f"{overall_stats[script_name]['count']:<10}")
+            ratio_str = f"{ratio:.2%}" if ratio is not None else "N/A"
+            print(f"{script_name:<20} ${mean_reward:<14.2f} {ratio_str:<10} "
+                  f"${overall_stats[script_name]['std']:<11.2f} "
+                  f"${overall_stats[script_name]['min']:<11.2f} "
+                  f"${overall_stats[script_name]['max']:<11.2f} "
+                  f"{overall_stats[script_name]['count']:<6}")
         else:
-            print(f"{script_name:<20} {'N/A':<15} {'N/A':<15} {'N/A':<15} {'N/A':<15} {'0':<10}")
+            print(f"{script_name:<20} {'N/A':<15} {'N/A':<10} {'N/A':<12} {'N/A':<12} {'N/A':<12} {'0':<6}")
     
     # Show errors if any
     print("\n" + "-" * 80)
@@ -458,8 +494,62 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
     if not has_errors:
         print("\nNo errors encountered.")
     
+    # Print ratio summary
+    if perfect_reward and perfect_reward > 0:
+        print("\n" + "=" * 80)
+        print("PERFORMANCE RATIO (relative to Perfect Score)")
+        print("=" * 80)
+        print(f"Perfect Score: ${perfect_reward:.2f} (100.00%)")
+        print("-" * 40)
+        for script_name in SCRIPTS.keys():
+            if script_name == "perfect_score":
+                continue
+            if script_name in overall_stats and overall_stats[script_name].get('ratio') is not None:
+                ratio = overall_stats[script_name]['ratio']
+                mean = overall_stats[script_name]['mean']
+                print(f"{script_name:<15} ${mean:>10.2f}  ({ratio:>6.2%})")
+        print("=" * 80)
+    
     # Save detailed results to JSON
     output_file = os.path.join(instance_dir, "benchmark_results.json")
+    
+    # Build results with ratio
+    results_with_ratio = {}
+    for script_name in SCRIPTS.keys():
+        rewards = results[script_name]
+        if rewards:
+            mean_reward = float(np.mean(rewards))
+            ratio = mean_reward / perfect_reward if perfect_reward and perfect_reward > 0 else None
+            results_with_ratio[script_name] = {
+                'rewards': [float(r) for r in rewards],
+                'mean': mean_reward,
+                'std': float(np.std(rewards)) if len(rewards) > 1 else 0.0,
+                'min': float(np.min(rewards)),
+                'max': float(np.max(rewards)),
+                'count': len(rewards),
+                'ratio_to_perfect': ratio,
+            }
+        else:
+            results_with_ratio[script_name] = {
+                'rewards': [],
+                'mean': None,
+                'std': None,
+                'min': None,
+                'max': None,
+                'count': 0,
+                'ratio_to_perfect': None,
+            }
+    
+    # Build summary
+    summary = {
+        'perfect_score': perfect_reward,
+        'ratios': {
+            script_name: results_with_ratio[script_name]['ratio_to_perfect']
+            for script_name in SCRIPTS.keys()
+            if results_with_ratio[script_name]['ratio_to_perfect'] is not None
+        }
+    }
+    
     detailed_results = {
         'instance_dir': instance_dir,
         'instance_name': instance_name,
@@ -468,20 +558,8 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
         'num_runs_llm': NUM_RUNS,
         'num_runs_deterministic': 1,
         'max_periods': max_periods,
-        'results': {
-            script_name: {
-                'rewards': [float(r) for r in rewards],
-                'mean': float(np.mean(rewards)) if rewards else None,
-                'std': float(np.std(rewards)) if len(rewards) > 1 else 0.0 if rewards else None,
-                'min': float(np.min(rewards)) if rewards else None,
-                'max': float(np.max(rewards)) if rewards else None,
-                'count': len(rewards),
-            }
-            for script_name, rewards in {
-                script_name: results[script_name]
-                for script_name in SCRIPTS.keys()
-            }.items()
-        },
+        'summary': summary,
+        'results': results_with_ratio,
         'errors': {
             script_name: errors[script_name]
             for script_name in SCRIPTS.keys()
