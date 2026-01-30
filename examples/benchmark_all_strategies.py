@@ -30,6 +30,7 @@ import argparse
 from pathlib import Path
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed, wait, FIRST_COMPLETED
+from datetime import datetime
 import numpy as np
 from typing import Dict, List, Tuple
 
@@ -64,6 +65,35 @@ BASE_DIR = Path(__file__).parent.parent
 DEFAULT_MODEL = "google/gemini-3-pro-preview"
 
 
+def is_instance_completed(instance_dir: str, required_strategies: set = None) -> bool:
+    """
+    Check if an instance already has complete benchmark results.
+    
+    Returns True if benchmark_results.json exists and contains results for all required strategies.
+    """
+    if required_strategies is None:
+        required_strategies = set(SCRIPTS.keys())
+    
+    results_file = os.path.join(instance_dir, "benchmark_results.json")
+    if not os.path.exists(results_file):
+        return False
+    
+    try:
+        with open(results_file, 'r') as f:
+            data = json.load(f)
+        
+        results = data.get('results', {})
+        for strategy in required_strategies:
+            if strategy not in results:
+                return False
+            if not results[strategy].get('rewards') or len(results[strategy]['rewards']) == 0:
+                return False
+        
+        return True
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return False
+
+
 def detect_promised_lead_time(instance_dir: str) -> int:
     """
     Auto-detect promised lead time from folder path.
@@ -87,8 +117,20 @@ def detect_promised_lead_time(instance_dir: str) -> int:
     return None
 
 
-def extract_reward_from_output(output: str) -> float:
-    """Extract total reward from script output."""
+def extract_reward_from_output(output: str) -> tuple:
+    """
+    Extract total reward from script output.
+    Returns (reward, error_msg) where error_msg is None if no issues detected.
+    """
+    # First check for VM Final Reward to detect crashes
+    vm_final_match = re.search(r"VM Final Reward:\s*(-?[\d,]+\.?\d*)", output)
+    vm_final_reward = None
+    if vm_final_match:
+        try:
+            vm_final_reward = float(vm_final_match.group(1).replace(',', '').replace(' ', ''))
+        except ValueError:
+            pass
+    
     # Pattern to match: >>> Total Reward: $1234.56 <<< or $-123.45 <<<
     # or variations like "Total Reward (OR Baseline): $1234.56"
     # or Perfect Score: $1234.56
@@ -97,7 +139,6 @@ def extract_reward_from_output(output: str) -> float:
         r">>>\s*Perfect Score:\s*\$(-?\s*[\d,]+\.?\d*)\s*<<<",  # Perfect Score format
         r">>>\s*Total Reward[^:]*:\s*\$(-?\s*[\d,]+\.?\d*)\s*<<<",  # With >>> ... <<< (supports negative)
         r"Total Reward[^:]*:\s*\$(-?\s*[\d,]+\.?\d*)",  # Without >>> ... <<< (supports negative)
-        r"VM Final Reward:\s*(-?\s*[\d,]+\.?\d*)",  # Fallback to VM Final Reward (supports negative)
     ]
     
     for pattern in patterns:
@@ -106,7 +147,17 @@ def extract_reward_from_output(output: str) -> float:
             try:
                 # Remove commas and whitespace from number string
                 reward_str = match.group(1).replace(',', '').replace(' ', '')
-                return float(reward_str)
+                reward = float(reward_str)
+                
+                # Check for VM crash indicator (VM Final Reward = -1)
+                if vm_final_reward is not None and vm_final_reward == -1.0:
+                    return (reward, "VM_CRASHED: Final Reward = -1.0")
+                
+                # Check for suspicious $0.00 reward
+                if reward == 0.0 and vm_final_reward == -1.0:
+                    return (reward, "VM_CRASHED: Zero reward with Final Reward = -1.0")
+                
+                return (reward, None)
             except ValueError:
                 continue
     
@@ -121,11 +172,21 @@ def extract_reward_from_output(output: str) -> float:
                 try:
                     # Take the last number and remove commas and whitespace
                     reward_str = numbers[-1].replace(',', '').replace(' ', '')
-                    return float(reward_str)
+                    reward = float(reward_str)
+                    
+                    # Check for VM crash
+                    if vm_final_reward is not None and vm_final_reward == -1.0:
+                        return (reward, "VM_CRASHED: Final Reward = -1.0")
+                    
+                    return (reward, None)
                 except ValueError:
                     continue
     
-    return None
+    # Fallback to VM Final Reward if no other patterns match
+    if vm_final_reward is not None and vm_final_reward != -1.0:
+        return (vm_final_reward, "Used VM Final Reward as fallback")
+    
+    return (None, "PARSE_ERROR: Could not extract reward from output")
 
 
 def run_script(script_path: str, run_num: int, script_name: str,
@@ -191,13 +252,16 @@ def run_script(script_path: str, run_num: int, script_name: str,
             cwd=base_dir,
             capture_output=True,
             text=True,
-            timeout=2000,  # 33 minute timeout (2000 seconds)
+            timeout=7200,  # 2 hour timeout (7200 seconds)
             stdin=subprocess.DEVNULL,  # Prevent waiting for stdin input
         )
         
         output = result.stdout + result.stderr
         
-        # Add perfect reward to output for logging
+        # Add timestamp and perfect reward to output for logging
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        output = f"[Timestamp: {timestamp}]\n[Script: {script_name}]\n[Instance: {instance_dir}]\n\n" + output
+        
         if perfect_reward is not None:
             output += f"\n\n{'='*40}\nREFERENCE: Perfect Score: ${perfect_reward:.2f}\n{'='*40}\n"
         
@@ -212,7 +276,7 @@ def run_script(script_path: str, run_num: int, script_name: str,
             output += f"\n[Warning: Could not save log to {log_path}: {str(e)}]"
         
         # Try to extract reward from output
-        reward = extract_reward_from_output(output)
+        reward, extraction_error = extract_reward_from_output(output)
         
         # If extraction failed, try reading from log file (in case output was truncated)
         # This handles cases where the script completed but subprocess output was incomplete
@@ -224,7 +288,7 @@ def run_script(script_path: str, run_num: int, script_name: str,
                     try:
                         with open(log_path, 'r', encoding=encoding, errors='replace') as f:
                             log_content = f.read()
-                        reward = extract_reward_from_output(log_content)
+                        reward, extraction_error = extract_reward_from_output(log_content)
                         if reward is not None:
                             break  # Successfully extracted, no need to try other encodings
                     except (UnicodeDecodeError, UnicodeError):
@@ -236,17 +300,22 @@ def run_script(script_path: str, run_num: int, script_name: str,
         # Script may have completed successfully but returned non-zero for other reasons
         # (e.g., API rate limit errors after completion, cleanup errors, etc.)
         if reward is not None:
+            # Check for VM crash or other extraction errors
+            if extraction_error and extraction_error.startswith("VM_CRASHED"):
+                return reward, f"ERROR: {extraction_error}", output
             if result.returncode != 0:
                 # Log a warning but still return the reward
                 return reward, f"Warning: Script returned exit code {result.returncode} but reward was extracted", output
+            if extraction_error:
+                return reward, f"Warning: {extraction_error}", output
             return reward, None, output
         
         # If we couldn't extract reward, return error
-        return None, f"Could not extract reward from output. Exit code: {result.returncode}", output
+        return None, f"Could not extract reward from output. Exit code: {result.returncode}. {extraction_error or ''}", output
         
     except subprocess.TimeoutExpired as e:
-        timeout_minutes = 2000 / 60
-        return None, f"Script timed out after {timeout_minutes:.1f} minutes ({2000} seconds)", ""
+        timeout_minutes = 7200 / 60
+        return None, f"Script timed out after {timeout_minutes:.1f} minutes ({7200} seconds)", ""
     except Exception as e:
         return None, f"Error running script: {str(e)}", ""
 
@@ -540,6 +609,30 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
                 'ratio_to_perfect': None,
             }
     
+    # Detect suspicious results (reward <= 0 or ratio < 10%)
+    warnings = {}
+    for script_name in SCRIPTS.keys():
+        if script_name == "perfect_score":
+            continue
+        data = results_with_ratio.get(script_name, {})
+        mean = data.get('mean')
+        ratio = data.get('ratio_to_perfect')
+        
+        if mean is not None and mean <= 0:
+            warn_msg = f"SUSPICIOUS: {script_name} got reward ${mean:.2f} (likely crashed or failed)"
+            warnings[script_name] = warn_msg
+            if script_name not in errors:
+                errors[script_name] = []
+            errors[script_name].append(warn_msg)
+            print(f"\n⚠️  WARNING: {warn_msg}")
+        elif ratio is not None and ratio < 0.1:
+            warn_msg = f"SUSPICIOUS: {script_name} got very low ratio {ratio:.2%} (may have issues)"
+            warnings[script_name] = warn_msg
+            if script_name not in errors:
+                errors[script_name] = []
+            errors[script_name].append(warn_msg)
+            print(f"\n⚠️  WARNING: {warn_msg}")
+    
     # Build summary
     summary = {
         'perfect_score': perfect_reward,
@@ -547,7 +640,8 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
             script_name: results_with_ratio[script_name]['ratio_to_perfect']
             for script_name in SCRIPTS.keys()
             if results_with_ratio[script_name]['ratio_to_perfect'] is not None
-        }
+        },
+        'warnings': warnings if warnings else None
     }
     
     detailed_results = {

@@ -109,7 +109,53 @@ class LLMAgent(Agent):
                 }
             )
 
-    def __call__(self, observation: str) -> str:
+    def _validate_json_action(self, response_text: str) -> bool:
+        """Validate that response contains valid JSON with 'action' field."""
+        import json
+        import re
+        
+        text = response_text.strip()
+        # Remove markdown fences
+        text = re.sub(r'^```(?:json)?\s*', '', text)
+        text = re.sub(r'\s*```$', '', text)
+        
+        # Try to find and parse JSON
+        json_start = text.find('{')
+        if json_start == -1:
+            return False
+        
+        # Find balanced braces
+        depth = 0
+        in_string = False
+        escape = False
+        for i, c in enumerate(text[json_start:], json_start):
+            if escape:
+                escape = False
+                continue
+            if c == '\\' and in_string:
+                escape = True
+                continue
+            if c == '"' and not escape:
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if c == '{':
+                depth += 1
+            elif c == '}':
+                depth -= 1
+                if depth == 0:
+                    json_str = text[json_start:i+1]
+                    try:
+                        data = json.loads(json_str)
+                        if 'action' in data and isinstance(data['action'], dict):
+                            return True
+                    except Exception:
+                        pass
+                    break
+        return False
+
+    def __call__(self, observation: str, max_retries: int = 3) -> str:
         if not isinstance(observation, str):
             raise ValueError(f"Observation must be a string. Received type: {type(observation)}")
 
@@ -118,44 +164,63 @@ class LLMAgent(Agent):
             {"role": "user", "content": observation}
         ]
         
-        if self.use_openai:
-            # OpenAI Responses API for gpt-5-mini
-            reasoning_effort = self.reasoning_effort if self.reasoning_effort else "low"
-            request_payload = {
-                "model": self.model_name,
-                "input": [
-                    {"role": "system", "content": [{"type": "input_text", "text": self.system_prompt}]},
-                    {"role": "user", "content": [{"type": "input_text", "text": observation}]},
-                ],
-                "reasoning": {"effort": reasoning_effort},
-            }
-            response = self.client.responses.create(**request_payload)
-            return response.output_text.strip()
-        else:
-            # OpenRouter API
-            reasoning_effort = self.reasoning_effort if self.reasoning_effort else "low"
+        for attempt in range(max_retries):
             try:
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    reasoning={
-                        "effort": reasoning_effort,
-                        "exclude": False
+                if self.use_openai:
+                    # OpenAI Responses API for gpt-5-mini
+                    reasoning_effort = self.reasoning_effort if self.reasoning_effort else "low"
+                    request_payload = {
+                        "model": self.model_name,
+                        "input": [
+                            {"role": "system", "content": [{"type": "input_text", "text": self.system_prompt}]},
+                            {"role": "user", "content": [{"type": "input_text", "text": observation}]},
+                        ],
+                        "reasoning": {"effort": reasoning_effort},
                     }
-                )
-                return response.choices[0].message.content.strip()
-            except TypeError:
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    extra_body={
-                        "reasoning": {
-                            "effort": reasoning_effort,
-                            "exclude": False
-                        }
-                    }
-                )
-                return response.choices[0].message.content.strip()
+                    response = self.client.responses.create(**request_payload)
+                    result = response.output_text.strip()
+                else:
+                    # OpenRouter API
+                    reasoning_effort = self.reasoning_effort if self.reasoning_effort else "low"
+                    try:
+                        response = self.client.chat.completions.create(
+                            model=self.model_name,
+                            messages=messages,
+                            reasoning={
+                                "effort": reasoning_effort,
+                                "exclude": False
+                            }
+                        )
+                        result = response.choices[0].message.content.strip()
+                    except TypeError:
+                        response = self.client.chat.completions.create(
+                            model=self.model_name,
+                            messages=messages,
+                            extra_body={
+                                "reasoning": {
+                                    "effort": reasoning_effort,
+                                    "exclude": False
+                                }
+                            }
+                        )
+                        result = response.choices[0].message.content.strip()
+                
+                # Validate JSON structure
+                if self._validate_json_action(result):
+                    return result
+                else:
+                    print(f"[RETRY {attempt+1}/{max_retries}] Invalid JSON structure, retrying...")
+                    if attempt == max_retries - 1:
+                        # Last attempt failed, return as-is and let env handle it
+                        print(f"[WARNING] All {max_retries} retries failed, returning raw response")
+                        return result
+                        
+            except Exception as e:
+                print(f"[RETRY {attempt+1}/{max_retries}] API error: {e}")
+                if attempt == max_retries - 1:
+                    raise
+        
+        return result
 
 
 def inject_carry_over_insights(observation: str, insights: dict) -> str:
@@ -548,10 +613,10 @@ def make_vm_agent(initial_samples: dict = None, promised_lead_time: int = 0,
     
     # Add historical demand data if provided
     if initial_samples:
-        system += "=== HISTORICAL DEMAND SAMPLES ===\n"
-        system += "Use these samples to ground your prior before any real demand is observed:\n"
+        system += "=== HISTORICAL DEMAND DATA ===\n"
+        system += "Use these samples to inform your demand forecast:\n"
         for item_id, samples in initial_samples.items():
-            system += f"- {item_id}:\n"
+            system += f"  {item_id}:\n"
             for date, demand in samples:
                 system += f"    {date}: {demand}\n"
         system += "\n"

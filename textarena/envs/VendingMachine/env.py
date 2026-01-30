@@ -522,39 +522,109 @@ class VendingMachineEnv(ta.Env):
         """
         Parse JSON action format: {"action": {"item_id": qty, ...}, "rationale": "..."}
         Returns (action_dict, rationale) or None if invalid.
+        
+        Robust parsing strategies:
+        1. Try direct JSON parse after removing markdown fences
+        2. Find balanced braces for the outermost JSON object
+        3. Extract just the "action" field using regex
         """
-        try:
-            import json
-            action = action.strip()
-            
-            # Find JSON object in the string
-            json_start = action.find('{')
-            json_end = action.rfind('}') + 1
-            if json_start == -1 or json_end == 0:
+        import json
+        import re
+        
+        action = action.strip()
+        
+        # Strategy 0: Remove markdown code fences
+        action = re.sub(r'^```(?:json)?\s*', '', action)
+        action = re.sub(r'\s*```$', '', action)
+        action = action.strip()
+        
+        # Strategy 1: Find balanced braces for outermost JSON
+        def find_balanced_json(s: str) -> Optional[str]:
+            """Find the first balanced JSON object in the string."""
+            start = s.find('{')
+            if start == -1:
                 return None
-            
-            json_str = action[json_start:json_end]
-            data = json.loads(json_str)
-            
-            if 'action' not in data:
-                return None
-            
-            action_dict = data['action']
-            if not isinstance(action_dict, dict):
-                return None
-            
-            # Convert all values to integers
-            result = {}
-            for item_id, qty in action_dict.items():
-                result[str(item_id)] = int(qty)
-            
-            # Extract rationale if present
-            rationale = data.get('rationale', None)
-            
-            return (result, rationale)
-        except Exception as e:
-            print(f"Error parsing JSON action: {e}")
+            depth = 0
+            in_string = False
+            escape = False
+            for i, c in enumerate(s[start:], start):
+                if escape:
+                    escape = False
+                    continue
+                if c == '\\' and in_string:
+                    escape = True
+                    continue
+                if c == '"' and not escape:
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                if c == '{':
+                    depth += 1
+                elif c == '}':
+                    depth -= 1
+                    if depth == 0:
+                        return s[start:i+1]
             return None
+        
+        # Try balanced JSON extraction
+        json_str = find_balanced_json(action)
+        if json_str:
+            try:
+                data = json.loads(json_str)
+                if 'action' in data and isinstance(data['action'], dict):
+                    result = {}
+                    for item_id, qty in data['action'].items():
+                        result[str(item_id)] = int(qty)
+                    return (result, data.get('rationale', None))
+            except Exception:
+                pass
+        
+        # Strategy 2: Simple first/last brace (original method)
+        json_start = action.find('{')
+        json_end = action.rfind('}') + 1
+        if json_start != -1 and json_end > 0:
+            json_str = action[json_start:json_end]
+            try:
+                data = json.loads(json_str)
+                if 'action' in data and isinstance(data['action'], dict):
+                    result = {}
+                    for item_id, qty in data['action'].items():
+                        result[str(item_id)] = int(qty)
+                    return (result, data.get('rationale', None))
+            except Exception:
+                pass
+        
+        # Strategy 3: Regex extraction of "action" field
+        # Match "action": {"item_id": qty, ...}
+        action_pattern = r'"action"\s*:\s*\{([^}]+)\}'
+        match = re.search(action_pattern, action)
+        if match:
+            try:
+                inner = match.group(1)
+                # Parse item:qty pairs
+                result = {}
+                pairs = re.findall(r'"([^"]+)"\s*:\s*(\d+)', inner)
+                for item_id, qty in pairs:
+                    result[str(item_id)] = int(qty)
+                if result:
+                    return (result, None)
+            except Exception:
+                pass
+        
+        # Strategy 4: Look for any number after item_id pattern
+        # Last resort - find "item_id": NUMBER anywhere
+        item_pattern = r'"(\d+)"\s*:\s*(\d+)'
+        matches = re.findall(item_pattern, action)
+        if matches:
+            result = {}
+            for item_id, qty in matches:
+                result[str(item_id)] = int(qty)
+            if result:
+                return (result, None)
+        
+        print(f"Error parsing JSON action: No valid JSON found")
+        return None
     
     def _parse_multi_item_action(self, action: str, token: str) -> Optional[Dict[str, int]]:
         """

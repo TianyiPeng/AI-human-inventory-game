@@ -112,7 +112,23 @@ class LLMAgent(Agent):
                 }
             )
 
-    def __call__(self, observation: str) -> str:
+    def _validate_json_action(self, response_text: str) -> bool:
+        """
+        Check if response contains any JSON-like content.
+        Since robust_parse_json always succeeds with regex fallback, 
+        we just check if there's any content to parse.
+        """
+        if not response_text or not response_text.strip():
+            return False
+        
+        # Check if there's any JSON-like content (has braces or method keywords)
+        text = response_text.strip()
+        has_json = '{' in text or '}' in text
+        has_keywords = any(kw in text.lower() for kw in ['method', 'default', 'explicit', 'recent'])
+        
+        return has_json or has_keywords
+
+    def __call__(self, observation: str, max_retries: int = 3) -> str:
         if not isinstance(observation, str):
             raise ValueError(f"Observation must be a string. Received type: {type(observation)}")
 
@@ -121,44 +137,63 @@ class LLMAgent(Agent):
             {"role": "user", "content": observation}
         ]
         
-        if self.use_openai:
-            # OpenAI Responses API for gpt-5-mini
-            reasoning_effort = self.reasoning_effort if self.reasoning_effort else "low"
-            request_payload = {
-                "model": self.model_name,
-                "input": [
-                    {"role": "system", "content": [{"type": "input_text", "text": self.system_prompt}]},
-                    {"role": "user", "content": [{"type": "input_text", "text": observation}]},
-                ],
-                "reasoning": {"effort": reasoning_effort},
-            }
-            response = self.client.responses.create(**request_payload)
-            return response.output_text.strip()
-        else:
-            # OpenRouter API
-            reasoning_effort = self.reasoning_effort if self.reasoning_effort else "low"
+        for attempt in range(max_retries):
             try:
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    reasoning={
-                        "effort": reasoning_effort,
-                        "exclude": False
+                if self.use_openai:
+                    # OpenAI Responses API for gpt-5-mini
+                    reasoning_effort = self.reasoning_effort if self.reasoning_effort else "low"
+                    request_payload = {
+                        "model": self.model_name,
+                        "input": [
+                            {"role": "system", "content": [{"type": "input_text", "text": self.system_prompt}]},
+                            {"role": "user", "content": [{"type": "input_text", "text": observation}]},
+                        ],
+                        "reasoning": {"effort": reasoning_effort},
                     }
-                )
-                return response.choices[0].message.content.strip()
-            except TypeError:
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    extra_body={
-                        "reasoning": {
-                            "effort": reasoning_effort,
-                            "exclude": False
-                        }
-                    }
-                )
-                return response.choices[0].message.content.strip()
+                    response = self.client.responses.create(**request_payload)
+                    result = response.output_text.strip()
+                else:
+                    # OpenRouter API
+                    reasoning_effort = self.reasoning_effort if self.reasoning_effort else "low"
+                    try:
+                        response = self.client.chat.completions.create(
+                            model=self.model_name,
+                            messages=messages,
+                            reasoning={
+                                "effort": reasoning_effort,
+                                "exclude": False
+                            }
+                        )
+                        result = response.choices[0].message.content.strip()
+                    except TypeError:
+                        response = self.client.chat.completions.create(
+                            model=self.model_name,
+                            messages=messages,
+                            extra_body={
+                                "reasoning": {
+                                    "effort": reasoning_effort,
+                                    "exclude": False
+                                }
+                            }
+                        )
+                        result = response.choices[0].message.content.strip()
+                
+                # Validate JSON structure
+                if self._validate_json_action(result):
+                    return result
+                else:
+                    print(f"[RETRY {attempt+1}/{max_retries}] Invalid JSON structure, retrying...")
+                    if attempt == max_retries - 1:
+                        # Last attempt failed, return as-is and let env handle it
+                        print(f"[WARNING] All {max_retries} retries failed, returning raw response")
+                        return result
+                        
+            except Exception as e:
+                print(f"[RETRY {attempt+1}/{max_retries}] API error: {e}")
+                if attempt == max_retries - 1:
+                    raise
+        
+        return result
 
 
 def inject_carry_over_insights(observation: str, insights: Dict[int, str]) -> str:
@@ -673,6 +708,138 @@ def compute_sigma_hat(method: str, params: dict, samples: List[float], L: float)
         raise ValueError(f"Invalid method for sigma_hat: {method}")
 
 
+def extract_parameters_regex(text: str) -> dict:
+    """
+    Ultimate fallback: Extract LLM-to-OR parameters using regex patterns.
+    This function ALWAYS returns valid parameters, using defaults if extraction fails.
+    
+    Looks for patterns like:
+    - "L_method": "default" or "explicit" or "recent_N" or "calculate"
+    - "mu_hat_method": "default" or "explicit" or "recent_N"  
+    - "sigma_hat_method": "default" or "explicit" or "recent_N"
+    - "L_value": 0
+    - "mu_hat_value": 100
+    - "sigma_hat_value": 25
+    - "N": 5
+    """
+    result = {
+        "rationale": "Extracted via regex fallback",
+        "carry_over_insight": "",
+        "parameters": {}
+    }
+    
+    # Extract rationale if present
+    rationale_match = re.search(r'"rationale"\s*:\s*"([^"]*(?:\\.[^"]*)*)"', text, re.DOTALL)
+    if rationale_match:
+        result["rationale"] = rationale_match.group(1).replace('\\"', '"').replace('\\n', '\n')
+    
+    # Valid method values
+    valid_methods = ['default', 'explicit', 'recent_N', 'calculate']
+    
+    # Extract L_method
+    l_method = 'default'
+    l_match = re.search(r'"L_method"\s*:\s*"(\w+)"', text)
+    if l_match and l_match.group(1) in valid_methods:
+        l_method = l_match.group(1)
+    
+    # Extract L_value if explicit
+    l_value = None
+    if l_method == 'explicit':
+        l_val_match = re.search(r'"L_value"\s*:\s*(\d+(?:\.\d+)?)', text)
+        if l_val_match:
+            l_value = float(l_val_match.group(1))
+    
+    # Extract L N value if recent_N
+    l_n = None
+    if l_method == 'recent_N':
+        l_n_match = re.search(r'"L_method"[^}]*?"N"\s*:\s*(\d+)', text)
+        if l_n_match:
+            l_n = int(l_n_match.group(1))
+    
+    # Extract mu_hat_method
+    mu_method = 'default'
+    mu_match = re.search(r'"mu_hat_method"\s*:\s*"(\w+)"', text)
+    if mu_match and mu_match.group(1) in valid_methods:
+        mu_method = mu_match.group(1)
+    
+    # Extract mu_hat_value if explicit
+    mu_value = None
+    if mu_method == 'explicit':
+        mu_val_match = re.search(r'"mu_hat_value"\s*:\s*(\d+(?:\.\d+)?)', text)
+        if mu_val_match:
+            mu_value = float(mu_val_match.group(1))
+    
+    # Extract mu N value if recent_N
+    mu_n = None
+    if mu_method == 'recent_N':
+        mu_n_match = re.search(r'"mu_hat_method"[^}]*?"N"\s*:\s*(\d+)', text)
+        if mu_n_match:
+            mu_n = int(mu_n_match.group(1))
+    
+    # Extract sigma_hat_method  
+    sigma_method = 'default'
+    sigma_match = re.search(r'"sigma_hat_method"\s*:\s*"(\w+)"', text)
+    if sigma_match and sigma_match.group(1) in valid_methods:
+        sigma_method = sigma_match.group(1)
+    
+    # Extract sigma_hat_value if explicit
+    sigma_value = None
+    if sigma_method == 'explicit':
+        sigma_val_match = re.search(r'"sigma_hat_value"\s*:\s*(\d+(?:\.\d+)?)', text)
+        if sigma_val_match:
+            sigma_value = float(sigma_val_match.group(1))
+    
+    # Extract sigma N value if recent_N
+    sigma_n = None
+    if sigma_method == 'recent_N':
+        sigma_n_match = re.search(r'"sigma_hat_method"[^}]*?"N"\s*:\s*(\d+)', text)
+        if sigma_n_match:
+            sigma_n = int(sigma_n_match.group(1))
+    
+    # Try to find any N values that might apply to recent_N methods
+    # Generic N extraction for cases where N is shared
+    generic_n_match = re.search(r'"N"\s*:\s*(\d+)', text)
+    generic_n = int(generic_n_match.group(1)) if generic_n_match else 5
+    
+    # Build L parameter
+    l_param = {"method": l_method}
+    if l_method == 'explicit' and l_value is not None:
+        l_param["value"] = l_value
+    elif l_method == 'recent_N':
+        l_param["N"] = l_n if l_n else generic_n
+    
+    # Build mu_hat parameter
+    mu_param = {"method": mu_method}
+    if mu_method == 'explicit' and mu_value is not None:
+        mu_param["value"] = mu_value
+    elif mu_method == 'recent_N':
+        mu_param["N"] = mu_n if mu_n else generic_n
+    
+    # Build sigma_hat parameter
+    sigma_param = {"method": sigma_method}
+    if sigma_method == 'explicit' and sigma_value is not None:
+        sigma_param["value"] = sigma_value
+    elif sigma_method == 'recent_N':
+        sigma_param["N"] = sigma_n if sigma_n else generic_n
+    
+    # Create a generic item parameter set
+    # We'll use a placeholder item_id that will be replaced later
+    result["parameters"]["__default__"] = {
+        "L": l_param,
+        "mu_hat": mu_param,
+        "sigma_hat": sigma_param
+    }
+    
+    # Also store the simple method strings for backward compatibility
+    result["L_method"] = l_method
+    result["mu_hat_method"] = mu_method
+    result["sigma_hat_method"] = sigma_method
+    
+    print(f"[REGEX FALLBACK] Extracted: L={l_method}, mu_hat={mu_method}, sigma_hat={sigma_method}")
+    
+    return result
+
+
 def robust_parse_json(text: str) -> dict:
     r"""
     Robustly parse JSON from LLM output, attempting to fix common formatting errors.
@@ -689,10 +856,7 @@ def robust_parse_json(text: str) -> dict:
         text: Raw text from LLM
         
     Returns:
-        Parsed JSON dict
-        
-    Raises:
-        json.JSONDecodeError: If JSON cannot be parsed even after repair attempts
+        Parsed JSON dict (ALWAYS returns valid dict, uses regex fallback if needed)
     """
     
     def fix_invalid_escapes(text):
@@ -821,15 +985,9 @@ def robust_parse_json(text: str) -> dict:
         if result:
             return result
     
-    # Step 7: Raise error with helpful message
-    try:
-        json.loads(cleaned)
-    except json.JSONDecodeError as e:
-        raise json.JSONDecodeError(
-            f"Failed to parse JSON after repair attempts. Original error: {e.msg}",
-            e.doc,
-            e.pos
-        )
+    # Step 7: Ultimate fallback - extract parameters using regex
+    # This ensures we ALWAYS get some parameters
+    return extract_parameters_regex(text)
 
 
 def validate_parameters_json(params_json: dict, item_ids: List[str], current_configs: Dict[str, dict]):
@@ -848,6 +1006,13 @@ def validate_parameters_json(params_json: dict, item_ids: List[str], current_con
         raise ValueError("JSON must contain 'parameters' field")
     
     parameters = params_json["parameters"]
+    
+    # Handle __default__ fallback - apply to all items
+    if "__default__" in parameters:
+        default_params = parameters["__default__"]
+        for item_id in item_ids:
+            if item_id not in parameters:
+                parameters[item_id] = default_params.copy()
     
     # Check all items are present
     for item_id in item_ids:
@@ -1037,11 +1202,12 @@ def make_llm_to_or_agent(initial_samples: dict, current_configs: dict,
             "\n"
         )
     
-    # Add historical demand data
+    # Add historical demand data if provided
     if initial_samples:
         system += "=== HISTORICAL DEMAND DATA ===\n"
+        system += "Use these samples to inform your demand forecast:\n"
         for item_id, samples in initial_samples.items():
-            system += f"{item_id}:\n"
+            system += f"  {item_id}:\n"
             for date, demand in samples:
                 system += f"    {date}: {demand}\n"
         system += "\n"
@@ -1393,63 +1559,50 @@ def main():
             else:
                 vm_agent = base_agent
             
-            # Get LLM response
+            # Get LLM response - robust_parse_json ALWAYS returns valid params
             llm_response = vm_agent(observation)
             
-            # Parse JSON response with robust parser
+            # Parse JSON response with robust parser (ALWAYS succeeds with regex fallback)
+            params_json = robust_parse_json(llm_response if llm_response else "")
+            
+            # Validate and fill in missing items (validation now handles __default__ fallback)
             try:
-                params_json = robust_parse_json(llm_response)
-                
-                # Validate JSON structure
                 validate_parameters_json(params_json, csv_player.get_item_ids(), current_item_configs)
-                
-                _safe_print(f"\nPeriod {current_period} ({exact_date}) LLM->OR Decision:")
-                print("="*70)
-                print("LLM Rationale:")
-                _safe_print(params_json.get("rationale", "(no rationale provided)"))
-                
-                carry_memo = params_json.get("carry_over_insight")
-                if isinstance(carry_memo, str):
-                    carry_memo = carry_memo.strip()
-                else:
-                    carry_memo = None
-                
-                if carry_memo:
-                    carry_over_insights[current_period] = carry_memo
-                    _safe_print(f"\nCarry-over insight: {carry_memo}")
-                else:
-                    if current_period in carry_over_insights:
-                        del carry_over_insights[current_period]
-                    print("\nCarry-over insight: (empty)")
-                
-                print("\n" + "="*70)
-                
-            except json.JSONDecodeError as e:
-                error_msg = f"\nERROR: Failed to parse LLM output as JSON: {e}"
-                print(error_msg, file=sys.stderr)
-                print(error_msg)
-                _safe_print(f"Raw output:\n{llm_response}")
-                print("\n" + "="*70)
-                print("=== ERROR SUMMARY ===")
-                print("="*70)
-                print(f"Period: {current_period}")
-                print(f"Error: JSON parsing failed")
-                print(f"Details: {e}")
-                print("="*70)
-                sys.exit(1)
             except ValueError as e:
-                error_msg = f"\nERROR: Invalid parameter specification: {e}"
-                print(error_msg, file=sys.stderr)
-                print(error_msg)
-                _safe_print(f"Raw output:\n{llm_response}")
-                print("\n" + "="*70)
-                print("=== ERROR SUMMARY ===")
-                print("="*70)
-                print(f"Period: {current_period}")
-                print(f"Error: Parameter validation failed")
-                print(f"Details: {e}")
-                print("="*70)
-                sys.exit(1)
+                # If validation still fails, use complete defaults
+                print(f"[WARNING] Validation failed: {e}, using defaults")
+                params_json = {
+                    "rationale": "FALLBACK: Validation failed, using default parameters.",
+                    "carry_over_insight": "",
+                    "parameters": {}
+                }
+                for item_id in csv_player.get_item_ids():
+                    params_json["parameters"][item_id] = {
+                        "L": {"method": "default"},
+                        "mu_hat": {"method": "default"},
+                        "sigma_hat": {"method": "default"}
+                    }
+            
+            _safe_print(f"\nPeriod {current_period} ({exact_date}) LLM->OR Decision:")
+            print("="*70)
+            print("LLM Rationale:")
+            _safe_print(params_json.get("rationale", "(no rationale provided)"))
+            
+            carry_memo = params_json.get("carry_over_insight")
+            if isinstance(carry_memo, str):
+                carry_memo = carry_memo.strip()
+            else:
+                carry_memo = None
+            
+            if carry_memo:
+                carry_over_insights[current_period] = carry_memo
+                _safe_print(f"\nCarry-over insight: {carry_memo}")
+            else:
+                if current_period in carry_over_insights:
+                    del carry_over_insights[current_period]
+                print("\nCarry-over insight: (empty)")
+            
+            print("\n" + "="*70)
             
             # Compute orders using OR formula with LLM-proposed parameters
             orders = {}

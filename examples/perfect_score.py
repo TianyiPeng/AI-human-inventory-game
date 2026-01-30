@@ -113,7 +113,7 @@ def main():
     print("=== Perfect Score Calculator ===")
     print("=" * 70)
     print(f"\nInput file: {args.demand_file}")
-    print(f"\nFormula: Perfect Score = sum(all demand) × profit")
+    print(f"\nFormula: Perfect Score = sum(all demand) * profit")
     
     # Calculate perfect score
     results = calculate_perfect_score(args.demand_file)
@@ -129,7 +129,7 @@ def main():
         print(f"  Total Periods: {data['total_periods']}")
         print(f"  Total Demand: {data['total_demand']}")
         print(f"  Profit per unit: ${data['profit']}")
-        print(f"  Perfect Score: {data['total_demand']} × ${data['profit']} = ${data['perfect_score']:.2f}")
+        print(f"  Perfect Score: {data['total_demand']} * ${data['profit']} = ${data['perfect_score']:.2f}")
     
     # Display total
     print("\n" + "=" * 70)
