@@ -583,11 +583,15 @@ def compute_L(method: str, params: dict, observed_lead_times: List[int], promise
         return promised_lead_time
     elif method == "calculate":
         if not observed_lead_times:
-            raise ValueError("Cannot calculate lead time: no observed arrivals yet")
+            # Fallback to promised lead time when no observations yet
+            print(f"  [L] No observed arrivals yet, falling back to promised lead time: {promised_lead_time}")
+            return promised_lead_time
         return float(np.mean(observed_lead_times))
     elif method == "recent_N":
         if not observed_lead_times:
-            raise ValueError("Cannot compute recent_N lead time: no observed arrivals yet")
+            # Fallback to promised lead time when no observations yet
+            print(f"  [L] No observed arrivals yet for recent_N, falling back to promised lead time: {promised_lead_time}")
+            return promised_lead_time
         if "N" not in params:
             raise ValueError("Method 'recent_N' for L requires 'N' field")
         N = int(params["N"])

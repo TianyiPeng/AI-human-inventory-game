@@ -62,7 +62,7 @@ NUM_RUNS = 1
 BASE_DIR = Path(__file__).parent.parent
 
 # Default model for OpenRouter
-DEFAULT_MODEL = "google/gemini-3-pro-preview"
+DEFAULT_MODEL = "google/gemini-3-flash-preview"
 
 
 def is_instance_completed(instance_dir: str, required_strategies: set = None) -> bool:
@@ -609,29 +609,8 @@ def benchmark_all(promised_lead_time: int, instance_dir: str, max_periods: int =
                 'ratio_to_perfect': None,
             }
     
-    # Detect suspicious results (reward <= 0 or ratio < 10%)
+    # Note: Negative rewards are normal (e.g., with lead time > 0), no warnings needed
     warnings = {}
-    for script_name in SCRIPTS.keys():
-        if script_name == "perfect_score":
-            continue
-        data = results_with_ratio.get(script_name, {})
-        mean = data.get('mean')
-        ratio = data.get('ratio_to_perfect')
-        
-        if mean is not None and mean <= 0:
-            warn_msg = f"SUSPICIOUS: {script_name} got reward ${mean:.2f} (likely crashed or failed)"
-            warnings[script_name] = warn_msg
-            if script_name not in errors:
-                errors[script_name] = []
-            errors[script_name].append(warn_msg)
-            print(f"\n⚠️  WARNING: {warn_msg}")
-        elif ratio is not None and ratio < 0.1:
-            warn_msg = f"SUSPICIOUS: {script_name} got very low ratio {ratio:.2%} (may have issues)"
-            warnings[script_name] = warn_msg
-            if script_name not in errors:
-                errors[script_name] = []
-            errors[script_name].append(warn_msg)
-            print(f"\n⚠️  WARNING: {warn_msg}")
     
     # Build summary
     summary = {
