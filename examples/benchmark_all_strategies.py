@@ -252,11 +252,13 @@ def run_script(script_path: str, run_num: int, script_name: str,
             cwd=base_dir,
             capture_output=True,
             text=True,
+            encoding="utf-8",  # Force UTF-8 so output with Unicode (e.g. product descriptions) decodes correctly on Windows (default gbk would fail)
+            errors="replace",
             timeout=7200,  # 2 hour timeout (7200 seconds)
             stdin=subprocess.DEVNULL,  # Prevent waiting for stdin input
         )
         
-        output = result.stdout + result.stderr
+        output = (result.stdout or "") + (result.stderr or "")
         
         # Add timestamp and perfect reward to output for logging
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
