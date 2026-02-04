@@ -23,7 +23,7 @@ sys.path.insert(0, str(EXAMPLES_DIR))
 
 # Import from external test scripts
 from or_csv_demo import CSVDemandPlayer, ORAgent
-from or_to_llm_csv_demo import GPT5MiniAgent, make_hybrid_vm_agent
+from or_to_llm_csv_demo import LLMAgent, make_hybrid_vm_agent
 
 
 def _sanitize_text(text: str) -> str:
@@ -831,7 +831,7 @@ class SimulationSession:
             if hasattr(base_agent, 'client'):
                 print(f"DEBUG: Base agent client has responses: {hasattr(base_agent.client, 'responses')}")
             
-            # Check if base agent is GPT5MiniAgent and supports streaming
+            # Check if base agent is LLMAgent and supports streaming
             if hasattr(base_agent, 'client') and hasattr(base_agent.client, 'responses'):
                 # Try true streaming using OpenAI Responses streaming interface
                 try:
