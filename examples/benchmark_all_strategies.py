@@ -62,7 +62,8 @@ NUM_RUNS = 1
 BASE_DIR = Path(__file__).parent.parent
 
 # Default model for OpenRouter
-DEFAULT_MODEL = "google/gemini-3-flash-preview"
+# NOTE: this is the model used by run_batch_benchmark.py unless overridden via --model
+DEFAULT_MODEL = "x-ai/grok-4.1-fast"
 
 
 def is_instance_completed(instance_dir: str, required_strategies: set = None) -> bool:

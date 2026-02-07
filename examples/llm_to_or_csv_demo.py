@@ -87,7 +87,14 @@ class LLMAgent(Agent):
 
         # Determine provider based on model name
         self.use_openai = model_name.startswith("gpt")
-        
+
+        # Configure HTTP timeout (seconds) for OpenAI/OpenRouter calls.
+        # Default is fairly large to reduce spurious timeouts on slower networks.
+        try:
+            timeout_s = float(os.getenv("OPENAI_HTTP_TIMEOUT", "120"))
+        except ValueError:
+            timeout_s = 120.0
+
         if self.use_openai:
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
@@ -95,21 +102,22 @@ class LLMAgent(Agent):
                     "OPENAI_API_KEY environment variable not set.\n"
                     "PowerShell example: $env:OPENAI_API_KEY=\"sk-xxx\""
                 )
-            self.client = OpenAI(api_key=api_key)
+            self.client = OpenAI(api_key=api_key, timeout=timeout_s)
         else:
             api_key = os.getenv("OPENROUTER_API_KEY")
             if not api_key:
                 raise ValueError(
-                    "OPENROUTER_API_KEY environment variable not set.\n"
+                    "OPENROUTER_API_KEY must be set for OpenRouter models.\n"
                     "PowerShell example: $env:OPENROUTER_API_KEY=\"sk-or-xxx\""
                 )
             self.client = OpenAI(
                 base_url="https://openrouter.ai/api/v1",
                 api_key=api_key,
+                timeout=timeout_s,
                 default_headers={
                     "HTTP-Referer": "https://github.com/textarena",
                     "X-Title": "TextArena VM Benchmark",
-                }
+                },
             )
 
     def _validate_json_action(self, response_text: str) -> bool:
