@@ -175,29 +175,26 @@ class LLMAgent(Agent):
         for attempt in range(max_retries):
             try:
                 if self.use_openai:
-                    # OpenAI Responses API for gpt-5-mini
-                    reasoning_effort = self.reasoning_effort if self.reasoning_effort else "low"
+                    # OpenAI Responses API for gpt-5-mini: reasoning + verbosity both low for speed
                     request_payload = {
                         "model": self.model_name,
                         "input": [
                             {"role": "system", "content": [{"type": "input_text", "text": self.system_prompt}]},
                             {"role": "user", "content": [{"type": "input_text", "text": observation}]},
                         ],
-                        "reasoning": {"effort": reasoning_effort},
+                        "reasoning": {"effort": "low"},
+                        "verbosity": "low",
                     }
                     response = self.client.responses.create(**request_payload)
                     result = response.output_text.strip()
                 else:
-                    # OpenRouter API
-                    reasoning_effort = self.reasoning_effort if self.reasoning_effort else "low"
+                    # OpenRouter API: reasoning + verbosity both low for speed
                     try:
                         response = self.client.chat.completions.create(
                             model=self.model_name,
                             messages=messages,
-                            reasoning={
-                                "effort": reasoning_effort,
-                                "exclude": False
-                            }
+                            reasoning={"effort": "low", "exclude": False},
+                            verbosity="low",
                         )
                         result = response.choices[0].message.content.strip()
                     except TypeError:
@@ -205,10 +202,8 @@ class LLMAgent(Agent):
                             model=self.model_name,
                             messages=messages,
                             extra_body={
-                                "reasoning": {
-                                    "effort": reasoning_effort,
-                                    "exclude": False
-                                }
+                                "reasoning": {"effort": "low", "exclude": False},
+                                "verbosity": "low",
                             }
                         )
                         result = response.choices[0].message.content.strip()

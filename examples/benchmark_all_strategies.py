@@ -63,7 +63,7 @@ BASE_DIR = Path(__file__).parent.parent
 
 # Default model for OpenRouter
 # NOTE: this is the model used by run_batch_benchmark.py unless overridden via --model
-DEFAULT_MODEL = "x-ai/grok-4.1-fast"
+DEFAULT_MODEL = "openai/gpt-5-mini"
 
 
 def is_instance_completed(instance_dir: str, required_strategies: set = None) -> bool:
