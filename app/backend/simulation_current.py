@@ -17,11 +17,11 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
 import pandas as pd
 import textarena as ta
 
-# Add examples directory to path for importing external scripts
-EXAMPLES_DIR = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(EXAMPLES_DIR))
+# Add core directory to path for importing agent modules
+CORE_DIR = Path(__file__).resolve().parent.parent / "core"
+sys.path.insert(0, str(CORE_DIR))
 
-# Import from external test scripts
+# Import agent implementations from core
 from or_csv_demo import CSVDemandPlayer, ORAgent
 from or_to_llm_csv_demo import LLMAgent, make_hybrid_vm_agent
 

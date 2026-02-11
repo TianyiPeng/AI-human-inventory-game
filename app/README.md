@@ -10,11 +10,14 @@ This implementation uses FastAPI for the backend and supports both Supabase (for
 app/
 ├── backend/
 │   ├── app.py                 # FastAPI application and endpoints
-│   ├── simulation_current.py  # Game simulation and environment logic
+│   ├── simulation_current.py  # Game simulation and agent integration
 │   ├── storage.py             # Storage abstraction (JSON / Supabase)
 │   ├── config.py              # Configuration management
 │   ├── supabase_client.py     # Supabase integration (optional)
 │   └── token_verifier.py      # JWT authentication (optional)
+├── core/
+│   ├── or_csv_demo.py         # OR (Operations Research) agent
+│   └── or_to_llm_csv_demo.py  # Hybrid LLM-to-OR agent implementation
 ├── frontend/
 │   ├── index.html             # Main interface
 │   ├── modeA.html             # Mode 1 (Daily Feedback)
@@ -36,7 +39,9 @@ app/
 - `backend/storage.py` – Abstraction layer supporting both local JSON and Supabase storage
 - `backend/config.py` – Centralized configuration management
 - `backend/app.py` – FastAPI endpoints for game sessions and interactions
-- `backend/simulation_current.py` – Game logic wrapping the vending machine environment
+- `backend/simulation_current.py` – Game simulation and agent integration logic
+- `core/or_csv_demo.py` – Pure OR (Operations Research) agent strategy
+- `core/or_to_llm_csv_demo.py` – Hybrid agent combining LLM with OR recommendations
 - `frontend/` – Interactive HTML interfaces for different game modes
 
 ## Setup Options

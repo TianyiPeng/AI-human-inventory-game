@@ -58,10 +58,13 @@ Game data is saved locally in `app/data/game_runs.json`.
 ├── app/                             # Main application
 │   ├── backend/                     # FastAPI application
 │   │   ├── app.py                  # Main endpoints
-│   │   ├── simulation_current.py    # Game logic
+│   │   ├── simulation_current.py    # Game logic & agent integration
 │   │   ├── storage.py              # Storage abstraction (JSON/Supabase)
 │   │   ├── config.py               # Configuration management
 │   │   └── ...
+│   ├── core/                        # Core business logic
+│   │   ├── or_csv_demo.py          # OR agent implementation
+│   │   └── or_to_llm_csv_demo.py   # Hybrid LLM-OR agent
 │   ├── frontend/                    # Web interfaces (HTML/JS)
 │   ├── data/                        # Local storage (auto-created)
 │   ├── docs/                        # Detailed guides
@@ -70,8 +73,6 @@ Game data is saved locally in `app/data/game_runs.json`.
 │   ├── .env.example                # Configuration template
 │   └── README.md                   # Application documentation
 ├── examples/
-│   ├── or_csv_demo.py              # OR agent implementation
-│   ├── or_to_llm_csv_demo.py       # Hybrid agent implementation
 │   └── initial_synthetic_demand_files/  # Sample demand data
 ├── textarena/                       # Game environment framework
 ├── pyproject.toml                  # Python project configuration
