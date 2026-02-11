@@ -6,15 +6,37 @@ This implementation uses FastAPI for the backend and supports both Supabase (for
 
 ## Project Layout
 
-- `backend/simulation.py` – reusable helpers that wrap the vending machine environment, capturing
-  transcript events and supporting both Mode 1 (Daily Feedback) and Mode 2 (Periodic Guidance).
-- `backend/app.py` – FastAPI application exposing endpoints for creating runs, exchanging
-  messages/guidance, and recording final actions. Supports persistence to either Supabase or local JSON storage.
-- `backend/token_verifier.py` – fetches Supabase JWKS and validates JWTs from the frontend (optional, only required for Supabase setup).
-- `backend/supabase_client.py` – minimal supabase-py wrapper for inserting completed runs (optional, only required for Supabase setup).
-- `frontend/` – static HTML interfaces with login (or simple session), mode selection, transcript view, and chat/guidance controls.
+```
+fullstack_demo/
+├── backend/
+│   ├── app.py                 # FastAPI application and endpoints
+│   ├── simulation_current.py  # Game simulation and environment logic
+│   ├── storage.py             # Storage abstraction (JSON / Supabase)
+│   ├── config.py              # Configuration management
+│   ├── supabase_client.py     # Supabase integration (optional)
+│   └── token_verifier.py      # JWT authentication (optional)
+├── frontend/
+│   ├── index.html             # Main interface
+│   ├── modeA.html             # Mode 1 (Daily Feedback)
+│   └── modeB.html             # Mode 2 (Periodic Guidance)
+├── data/
+│   └── game_runs.json         # Local storage (auto-created)
+├── docs/
+│   ├── DEVELOPMENT.md         # Local development guide
+│   ├── DEPLOYMENT.md          # Production deployment guide
+│   └── CONFIGURATION.md       # Configuration reference
+├── main.py                    # Application entry point
+├── requirements.txt           # Python dependencies
+├── .env.example              # Configuration template
+└── README.md                 # This file
+```
 
-The application loads `examples/demand.csv` for demand data by default.
+**Key Files:**
+- `backend/storage.py` – Abstraction layer supporting both local JSON and Supabase storage
+- `backend/config.py` – Centralized configuration management
+- `backend/app.py` – FastAPI endpoints for game sessions and interactions
+- `backend/simulation_current.py` – Game logic wrapping the vending machine environment
+- `frontend/` – Interactive HTML interfaces for different game modes
 
 ## Setup Options
 
@@ -57,6 +79,14 @@ For production deployments with multi-user support and cloud database:
 4. In Supabase Authentication settings, ensure email/password signups are enabled.
 
 5. Set the Supabase environment variables (see **Backend Configuration** below).
+
+## Documentation
+
+For detailed guides and references, see:
+
+- **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)** - Local development setup, debugging, and project structure
+- **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Production deployment guides (Render, Docker, local server, Supabase)
+- **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)** - Complete environment variable reference and configuration options
 
 ## Installation & Running
 
