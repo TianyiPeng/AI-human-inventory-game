@@ -1,158 +1,200 @@
 <div align="center">
-<picture>
-  <source media="(prefers-color-scheme: light)" srcset="/docs/ta_black.svg">
-  <img alt="TextArena logo" src="/docs/ta_white.svg" width="25%" height="25%">
-</picture>
-  
-A suite of 100+ {single,two,multi}-Player texted based games for benchmarking and training of LLMs.
 
-<h3>
+# AI-Human Inventory Game
 
-[Play](https://textarena.ai) | [Leaderboard](https://textarena.ai/leaderboard) | [Games](https://github.com/LeonGuertler/TextArena/blob/main/textarena/envs/README.md) | [Examples](https://github.com/LeonGuertler/TextArena/tree/main/examples)
+A fullstack web application for exploring human-AI collaboration in inventory management.
 
-</h3>
-
-[![GitHub Repo stars](https://img.shields.io/github/stars/LeonGuertler/TextArena)](https://github.com/LeonGuertler/TextArena/stargazers)
-[![PyPI Downloads](https://static.pepy.tech/badge/textarena)](https://pepy.tech/projects/textarena)
-[![Discord](https://img.shields.io/discord/1257951838322561075?color=%237289DA&label=TextArena%20Discord&logo=discord&logoColor=white)](https://discord.gg/KPacHzK23e)
-[![PyPI version](https://img.shields.io/pypi/v/textarena.svg)](https://pypi.org/project/textarena)
+Combines interactive gameplay with LLM agents to create an engaging learning experience for inventory control and supply chain optimization.
 
 </div>
 
-## Updates
-* **02/10/2025** Enhanced **VendingMachine** environment with multi-item inventory management, lead times, holding costs, and dynamic news events for complex economic simulations.
-* **31/07/2025** We added **SettlersOfCatan** to TextArena!
-* **14/07/2025** Announcing **MindGames** a NeurIPS2025 competition for training LLMs on various TextArena games that require theory of mind.
-* **01/07/2025** Release of v0.6.9 with **100** games and simplified states, new observation wrappers for training and default wrappers for environments. 
-* **01/07/2025** Release of __SPIRAL: Self-Play on Zero-Sum Games Incentivizes Reasoning via Multi-Agent Multi-Turn Reinforcement Learning__ introducing RL via self-play on TextArena games as a potential new training paradigm.
-* **22/06/2025** Release of [UnstableBaselines](https://github.com/LeonGuertler/UnstableBaselines) a light weight async online RL library for training LLMs on TextArena games. 
-* **16/04/2025** Release of the TextArena paper 
-* **14/02/2025** Release of the new, stable version for both pip and the website
-* **31/01/2025** Initial demo release highlighted by Andrej Karpathy (crashing all our servers)
+## Overview
 
+The **AI-Human Inventory Game** is a modern web application that teaches inventory management principles through interactive play. Users manage a vending machine inventory while an AI agent provides recommendations based on Operations Research and machine learning techniques.
 
-## Introduction
-**TextArena** is a flexible and extensible framework for training, evaluating, and benchmarking models in text-based games. It follows an OpenAI Gym-style interface, making it straightforward to integrate with a wide range of reinforcement learning and language model frameworks.
+**Key Features:**
+- 🤖 AI agent powered by OpenAI LLMs
+- 👥 Two gameplay modes:
+  - **Mode 1 (Daily Feedback)**: Chat with AI and make daily decisions
+  - **Mode 2 (Periodic Guidance)**: Agent runs automatically with periodic guidance
+- 💾 Local JSON storage (no external dependencies) or cloud-based Supabase
+- 🚀 Easy deployment (local, Render.com, Docker)
+- 📚 Educational tool for teaching supply chain optimization
+- 🎓 Perfect for classroom use and demonstrations
 
+## Quick Start
 
-## Getting Started
+### Prerequisites
+- Python 3.8+
+- OpenAI API key ([get one here](https://platform.openai.com/api-keys))
 
-### Installation
-Install TextArena directly from PyPI:
+### Installation (30 seconds)
+
 ```bash
-pip install textarena
+# Install dependencies
+pip install -r examples/fullstack_demo/requirements.txt
+
+# Copy environment template
+cp examples/fullstack_demo/.env.example examples/fullstack_demo/.env
+
+# Edit .env and add your OpenAI API key
+# OPENAI_API_KEY=sk-your-key-here
+
+# Run the app
+cd examples/fullstack_demo && python main.py
 ```
 
-### Offline Play
-The only requirement __Agents__ need to fulfill is having a __call__ function that accepts string observations and returns string action. We have implemented a number of basic agents that you can find [here](https://github.com/LeonGuertler/TextArena/blob/main/textarena/agents/basic_agents.py). 
+The app will open automatically in your browser at `http://localhost:8000`.
 
-#### Example 1: TicTacToe
-In this example, we show how you can let **GPT-4o-mini** play against **anthropic/claude-3.5-haiku** in a game of __TicTacToe__.
+Game data is saved locally in `examples/fullstack_demo/data/game_runs.json`.
 
-We will be using the OpenRouterAgent, so first you need to set you OpenRouter API key:
+## Project Structure
+
+```
+├── examples/
+│   ├── fullstack_demo/              # Main application
+│   │   ├── backend/                 # FastAPI application
+│   │   │   ├── app.py              # Main endpoints
+│   │   │   ├── simulation_current.py # Game logic
+│   │   │   ├── storage.py          # Storage abstraction (JSON/Supabase)
+│   │   │   ├── config.py           # Configuration management
+│   │   │   └── ...
+│   │   ├── frontend/                # Web interfaces (HTML/JS)
+│   │   ├── data/                    # Local storage (auto-created)
+│   │   ├── docs/                    # Detailed guides
+│   │   ├── main.py                 # Entry point
+│   │   ├── requirements.txt        # Dependencies
+│   │   ├── .env.example            # Configuration template
+│   │   └── README.md               # Fullstack documentation
+│   ├── or_csv_demo.py              # OR agent implementation
+│   ├── or_to_llm_csv_demo.py       # Hybrid agent implementation
+│   └── initial_synthetic_demand_files/  # Sample demand data
+└── textarena/                       # Game environment framework
+```
+
+## Documentation
+
+**Get Started Quickly:**
+- [Quick Start Guide](examples/fullstack_demo/README.md) - Overview and setup options
+- [Development Guide](examples/fullstack_demo/docs/DEVELOPMENT.md) - Local development and debugging
+
+**Detailed References:**
+- [Deployment Guide](examples/fullstack_demo/docs/DEPLOYMENT.md) - Production deployment (Render, Docker, local)
+- [Configuration Guide](examples/fullstack_demo/docs/CONFIGURATION.md) - All environment variables and options
+
+## Deployment Options
+
+### 🏠 Local Deployment
+Perfect for classrooms and personal use:
 ```bash
-export OPENROUTER_API_KEY="YOUR_OPENROUTER_API_KEY"
+cd examples/fullstack_demo
+python main.py
 ```
 
-Now we can build the models and let them play:
+### ☁️ Render Cloud Hosting
+Deploy to Render.com with one click - see [Deployment Guide](examples/fullstack_demo/docs/DEPLOYMENT.md)
 
-```python
-import textarena as ta
-
-# Initialize agents
-agents = {
-    0: ta.agents.OpenRouterAgent(model_name="GPT-4o-mini"),
-    1: ta.agents.OpenRouterAgent(model_name="anthropic/claude-3.5-haiku"),
-}
-
-# Initialize the environment
-env = ta.make(env_id="TicTacToe-v0")
-
-# wrap it for additional visualizations
-env = ta.wrappers.SimpleRenderWrapper(env=env) 
-
-env.reset(num_players=len(agents))
-
-done = False
-while not done:
-    player_id, observation = env.get_observation()
-    action = agents[player_id](observation)
-    done, step_info = env.step(action=action)
-
-rewards, game_info = env.close()
+### 🐳 Docker
+Run in a containerized environment:
+```bash
+docker build -t ai-inventory-game examples/fullstack_demo
+docker run -p 8000:8000 -e OPENAI_API_KEY=sk-... ai-inventory-game
 ```
 
-#### Example 2: Multi-Item Vending Machine
-TextArena also includes complex economic simulation games. Here's an example of the **VendingMachine** environment with multiple items, lead times, and dynamic news events:
+### 💎 Supabase
+Multi-user support with cloud database - see [Deployment Guide](examples/fullstack_demo/docs/DEPLOYMENT.md)
 
-```python
-import textarena as ta
-import os
+## Configuration
 
-# Set your OpenAI API key
-os.environ["OPENAI_API_KEY"] = "your-openai-key-here"
+The application uses environment variables for configuration. Copy and customize:
 
-# Initialize agents
-agents = {
-    0: ta.agents.OpenAIAgent(model_name="gpt-4o-mini", system_prompt="You are a VM controller..."),
-    1: ta.agents.OpenAIAgent(model_name="gpt-4o-mini", system_prompt="You are a customer..."),
-}
-
-# Initialize the multi-item vending machine
-env = ta.make(env_id="VendingMachine-v0")
-
-# Configure multiple items with different economics
-env.add_item(item_id="cola", description="Cola", lead_time=1, price=7, cost=4, holding_cost=0.5)
-env.add_item(item_id="chips", description="Chips", lead_time=2, price=5, cost=3, holding_cost=0.3)
-env.add_item(item_id="water", description="Water", lead_time=0, price=3, cost=2, holding_cost=0.2)
-
-# Add dynamic news events that affect demand
-env.add_news(day=2, news="Weekend Sale: Expect 30% higher demand for all items")
-env.add_news(day=6, news="Baseball game: Expect 50% higher demand for popcorn")
-
-env.reset(num_players=2)
-
-# Game loop with custom observation wrapper for context management
-done = False
-while not done:
-    player_id, observation = env.get_observation()
-    action = agents[player_id](observation)
-    done, _ = env.step(action=action)
-
-rewards, game_info = env.close()
-print(f"VM Total Reward: ${rewards[0]:.2f}")
+```bash
+cp examples/fullstack_demo/.env.example examples/fullstack_demo/.env
 ```
 
-**Key Features of VendingMachine:**
-- **Multi-item inventory management** with different lead times and costs
-- **Dynamic news events** that agents can anticipate and plan for
-- **Economic complexity** with holding costs, profit margins, and procurement planning
-- **Custom observation wrapper** providing complete context history and role-specific visibility
-- **Realistic supply chain mechanics** with order pipelines and delivery delays
+**Essential Variables:**
+- `OPENAI_API_KEY` - Your OpenAI API key (required)
+- `USE_LOCAL_STORAGE` - Use local JSON storage (default: true)
+- `OPENAI_MODEL` - Model to use (default: gpt-4o-mini)
+- `PORT` - Server port (default: 8000)
 
+See [Configuration Guide](examples/fullstack_demo/docs/CONFIGURATION.md) for all options.
 
+## Gameplay Modes
 
-## Citation [![arXiv](https://img.shields.io/badge/arXiv-2504.11442-b31b1b.svg)](https://arxiv.org/abs/2504.11442)
+### Mode 1: Daily Feedback
+- You make inventory decisions each day
+- Chat with the AI agent for advice and recommendations
+- Submit your final order decision
+- Receive feedback on your choices
 
-If you use **TextArena** in your research, please cite:
+### Mode 2: Periodic Guidance
+- Agent makes decisions autonomously
+- You provide guidance at key decision points
+- Agent adapts recommendations based on your feedback
+- Less hands-on, great for observing AI decision-making
+
+## Citation
+
+If you use this application in research or teaching, please cite:
 
 ```bibtex
-@misc{guertler2025textarena,
-    title={TextArena}, 
-    author={Leon Guertler and Bobby Cheng and Simon Yu and Bo Liu and Leshem Choshen and Cheston Tan},
-    year={2025},
-    eprint={2504.11442},
-    archivePrefix={arXiv},
-    primaryClass={cs.CL},
-    url={https://arxiv.org/abs/2504.11442}, 
+@article{baek2024ai,
+    title={AI Agents for Inventory Control: Human-LLM-OR Complementarity},
+    author={Baek, Jackie and Fu, Yaopeng and Ma, Will and Peng, Tianyi},
+    year={2024}
 }
 ```
 
+**Full Citation:** Baek, J., Fu, Y., Ma, W., & Peng, T. (2024). AI Agents for Inventory Control: Human-LLM-OR Complementarity.
 
+## Development
 
-## How to Contribute:
-If you have any questions at all, feel free to reach out on discord. The below issues are great starting points if you want to contribute:
-- Transfer the 'How to Contribute' from here to individual issues
-- Make RushHour board generation algorithmic
-- extend Fifteenpuzzel to arbitrary sizes
-- Add a nice end-of-game screen to the SimpleRenderWrapper visualizations
+The application is built with:
+- **Backend**: FastAPI (Python)
+- **Frontend**: HTML5 + JavaScript
+- **Game Framework**: TextArena
+- **LLM**: OpenAI GPT models
+- **Storage**: JSON (local) or Supabase (cloud)
+
+### For Local Development
+See [Development Guide](examples/fullstack_demo/docs/DEVELOPMENT.md) for setup and debugging.
+
+## Troubleshooting
+
+**"Port 8000 already in use"**
+- Change the port in `.env`: `PORT=8001`
+
+**"OpenAI API key error"**
+- Verify your key at https://platform.openai.com/api-keys
+- Check `.env` file is in the correct location
+
+**"Game data not saving"**
+- Ensure `examples/fullstack_demo/data/` directory exists and is writable
+- Check `USE_LOCAL_STORAGE=true` in `.env`
+
+For more help, see:
+- [DEVELOPMENT.md](examples/fullstack_demo/docs/DEVELOPMENT.md) - Debugging guide
+- [DEPLOYMENT.md](examples/fullstack_demo/docs/DEPLOYMENT.md) - Common deployment issues
+
+## Contributing
+
+To contribute improvements:
+1. Make changes in a feature branch
+2. Test locally with `python main.py`
+3. Create a pull request with your improvements
+
+## License
+
+MIT License - See [LICENSE](LICENSE) file
+
+## Support
+
+- 📖 [Quick Start](examples/fullstack_demo/README.md)
+- 🛠️ [Development Guide](examples/fullstack_demo/docs/DEVELOPMENT.md)
+- 🚀 [Deployment Guide](examples/fullstack_demo/docs/DEPLOYMENT.md)
+- ⚙️ [Configuration Reference](examples/fullstack_demo/docs/CONFIGURATION.md)
+
+---
+
+Made for teaching and exploring human-AI collaboration in inventory management.
