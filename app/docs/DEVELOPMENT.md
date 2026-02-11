@@ -5,43 +5,48 @@ This guide covers setting up the AI-Human Inventory Game for local development.
 ## Prerequisites
 
 - Python 3.8 or higher
-- pip or uv package manager
+- uv package manager (recommended) - https://docs.astral.sh/uv/
 - An OpenAI API key
 
 ## Quick Start (Recommended)
 
-### 1. Install Dependencies
+### 1. Install uv
 
-From the `examples/fullstack_demo/` directory:
+If you don't have uv installed:
 
 ```bash
-pip install -r requirements.txt
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Or using uv:
+### 2. Install Dependencies
+
+From the root directory (parent of `app/`):
+
 ```bash
-uv pip install -r requirements.txt
+uv sync
 ```
 
-### 2. Configure Environment
+This installs all dependencies specified in `pyproject.toml`.
+
+### 3. Configure Environment
 
 Copy the example environment file:
 
 ```bash
-cp .env.example .env
+cp app/.env.example app/.env
 ```
 
-Edit `.env` and set your OpenAI API key:
+Edit `app/.env` and set your OpenAI API key:
 
 ```bash
 OPENAI_API_KEY=sk-your-key-here
 USE_LOCAL_STORAGE=true
 ```
 
-### 3. Run the Application
+### 4. Run the Application
 
 ```bash
-python main.py
+cd app && uv run main.py
 ```
 
 This will:
@@ -57,13 +62,13 @@ The application automatically enables hot-reload in development mode. Any change
 
 ```bash
 # Auto-reload is enabled by default in development
-FULLSTACK_DEMO_RELOAD=1 python main.py
+cd app && FULLSTACK_DEMO_RELOAD=1 uv run main.py
 ```
 
 To disable auto-reload:
 
 ```bash
-FULLSTACK_DEMO_RELOAD=0 python main.py
+cd app && FULLSTACK_DEMO_RELOAD=0 uv run main.py
 ```
 
 ## Debugging

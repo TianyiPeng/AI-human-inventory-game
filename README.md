@@ -28,88 +28,94 @@ The **AI-Human Inventory Game** is a modern web application that teaches invento
 - Python 3.8+
 - OpenAI API key ([get one here](https://platform.openai.com/api-keys))
 
-### Installation (30 seconds)
+### Installation with uv (30 seconds)
 
 ```bash
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
 # Install dependencies
-pip install -r examples/fullstack_demo/requirements.txt
+uv sync
 
 # Copy environment template
-cp examples/fullstack_demo/.env.example examples/fullstack_demo/.env
+cp app/.env.example app/.env
 
 # Edit .env and add your OpenAI API key
+# nano app/.env
 # OPENAI_API_KEY=sk-your-key-here
 
 # Run the app
-cd examples/fullstack_demo && python main.py
+cd app && uv run main.py
 ```
 
 The app will open automatically in your browser at `http://localhost:8000`.
 
-Game data is saved locally in `examples/fullstack_demo/data/game_runs.json`.
+Game data is saved locally in `app/data/game_runs.json`.
 
 ## Project Structure
 
 ```
+├── app/                             # Main application
+│   ├── backend/                     # FastAPI application
+│   │   ├── app.py                  # Main endpoints
+│   │   ├── simulation_current.py    # Game logic
+│   │   ├── storage.py              # Storage abstraction (JSON/Supabase)
+│   │   ├── config.py               # Configuration management
+│   │   └── ...
+│   ├── frontend/                    # Web interfaces (HTML/JS)
+│   ├── data/                        # Local storage (auto-created)
+│   ├── docs/                        # Detailed guides
+│   ├── main.py                     # Entry point
+│   ├── requirements.txt            # Dependencies
+│   ├── .env.example                # Configuration template
+│   └── README.md                   # Application documentation
 ├── examples/
-│   ├── fullstack_demo/              # Main application
-│   │   ├── backend/                 # FastAPI application
-│   │   │   ├── app.py              # Main endpoints
-│   │   │   ├── simulation_current.py # Game logic
-│   │   │   ├── storage.py          # Storage abstraction (JSON/Supabase)
-│   │   │   ├── config.py           # Configuration management
-│   │   │   └── ...
-│   │   ├── frontend/                # Web interfaces (HTML/JS)
-│   │   ├── data/                    # Local storage (auto-created)
-│   │   ├── docs/                    # Detailed guides
-│   │   ├── main.py                 # Entry point
-│   │   ├── requirements.txt        # Dependencies
-│   │   ├── .env.example            # Configuration template
-│   │   └── README.md               # Fullstack documentation
 │   ├── or_csv_demo.py              # OR agent implementation
 │   ├── or_to_llm_csv_demo.py       # Hybrid agent implementation
 │   └── initial_synthetic_demand_files/  # Sample demand data
-└── textarena/                       # Game environment framework
+├── textarena/                       # Game environment framework
+├── pyproject.toml                  # Python project configuration
+└── README.md                        # This file
 ```
 
 ## Documentation
 
 **Get Started Quickly:**
-- [Quick Start Guide](examples/fullstack_demo/README.md) - Overview and setup options
-- [Development Guide](examples/fullstack_demo/docs/DEVELOPMENT.md) - Local development and debugging
+- [Quick Start Guide](app/README.md) - Overview and setup options
+- [Development Guide](app/docs/DEVELOPMENT.md) - Local development and debugging
 
 **Detailed References:**
-- [Deployment Guide](examples/fullstack_demo/docs/DEPLOYMENT.md) - Production deployment (Render, Docker, local)
-- [Configuration Guide](examples/fullstack_demo/docs/CONFIGURATION.md) - All environment variables and options
+- [Deployment Guide](app/docs/DEPLOYMENT.md) - Production deployment (Render, Docker, local)
+- [Configuration Guide](app/docs/CONFIGURATION.md) - All environment variables and options
 
 ## Deployment Options
 
 ### 🏠 Local Deployment
 Perfect for classrooms and personal use:
 ```bash
-cd examples/fullstack_demo
-python main.py
+cd app
+uv run main.py
 ```
 
 ### ☁️ Render Cloud Hosting
-Deploy to Render.com with one click - see [Deployment Guide](examples/fullstack_demo/docs/DEPLOYMENT.md)
+Deploy to Render.com with one click - see [Deployment Guide](app/docs/DEPLOYMENT.md)
 
 ### 🐳 Docker
 Run in a containerized environment:
 ```bash
-docker build -t ai-inventory-game examples/fullstack_demo
+docker build -t ai-inventory-game app
 docker run -p 8000:8000 -e OPENAI_API_KEY=sk-... ai-inventory-game
 ```
 
 ### 💎 Supabase
-Multi-user support with cloud database - see [Deployment Guide](examples/fullstack_demo/docs/DEPLOYMENT.md)
+Multi-user support with cloud database - see [Deployment Guide](app/docs/DEPLOYMENT.md)
 
 ## Configuration
 
 The application uses environment variables for configuration. Copy and customize:
 
 ```bash
-cp examples/fullstack_demo/.env.example examples/fullstack_demo/.env
+cp app/.env.example app/.env
 ```
 
 **Essential Variables:**
@@ -118,7 +124,7 @@ cp examples/fullstack_demo/.env.example examples/fullstack_demo/.env
 - `OPENAI_MODEL` - Model to use (default: gpt-4o-mini)
 - `PORT` - Server port (default: 8000)
 
-See [Configuration Guide](examples/fullstack_demo/docs/CONFIGURATION.md) for all options.
+See [Configuration Guide](app/docs/CONFIGURATION.md) for all options.
 
 ## Gameplay Modes
 
@@ -158,7 +164,7 @@ The application is built with:
 - **Storage**: JSON (local) or Supabase (cloud)
 
 ### For Local Development
-See [Development Guide](examples/fullstack_demo/docs/DEVELOPMENT.md) for setup and debugging.
+See [Development Guide](app/docs/DEVELOPMENT.md) for setup and debugging.
 
 ## Troubleshooting
 
@@ -170,12 +176,12 @@ See [Development Guide](examples/fullstack_demo/docs/DEVELOPMENT.md) for setup a
 - Check `.env` file is in the correct location
 
 **"Game data not saving"**
-- Ensure `examples/fullstack_demo/data/` directory exists and is writable
+- Ensure `app/data/` directory exists and is writable
 - Check `USE_LOCAL_STORAGE=true` in `.env`
 
 For more help, see:
-- [DEVELOPMENT.md](examples/fullstack_demo/docs/DEVELOPMENT.md) - Debugging guide
-- [DEPLOYMENT.md](examples/fullstack_demo/docs/DEPLOYMENT.md) - Common deployment issues
+- [DEVELOPMENT.md](app/docs/DEVELOPMENT.md) - Debugging guide
+- [DEPLOYMENT.md](app/docs/DEPLOYMENT.md) - Common deployment issues
 
 ## Contributing
 
@@ -190,10 +196,10 @@ MIT License - See [LICENSE](LICENSE) file
 
 ## Support
 
-- 📖 [Quick Start](examples/fullstack_demo/README.md)
-- 🛠️ [Development Guide](examples/fullstack_demo/docs/DEVELOPMENT.md)
-- 🚀 [Deployment Guide](examples/fullstack_demo/docs/DEPLOYMENT.md)
-- ⚙️ [Configuration Reference](examples/fullstack_demo/docs/CONFIGURATION.md)
+- 📖 [Quick Start](app/README.md)
+- 🛠️ [Development Guide](app/docs/DEVELOPMENT.md)
+- 🚀 [Deployment Guide](app/docs/DEPLOYMENT.md)
+- ⚙️ [Configuration Reference](app/docs/CONFIGURATION.md)
 
 ---
 

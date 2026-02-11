@@ -7,7 +7,7 @@ This implementation uses FastAPI for the backend and supports both Supabase (for
 ## Project Layout
 
 ```
-fullstack_demo/
+app/
 ├── backend/
 │   ├── app.py                 # FastAPI application and endpoints
 │   ├── simulation_current.py  # Game simulation and environment logic
@@ -18,7 +18,8 @@ fullstack_demo/
 ├── frontend/
 │   ├── index.html             # Main interface
 │   ├── modeA.html             # Mode 1 (Daily Feedback)
-│   └── modeB.html             # Mode 2 (Periodic Guidance)
+│   ├── modeB.html             # Mode 2 (Periodic Guidance)
+│   └── modeC.html             # Mode 3 (Alternative)
 ├── data/
 │   └── game_runs.json         # Local storage (auto-created)
 ├── docs/
@@ -97,26 +98,30 @@ For detailed guides and references, see:
 
 ### Quick Start (Local Storage)
 
-1. Install dependencies:
+1. Install uv (if not already installed):
    ```bash
-   pip install -r requirements.txt
+   curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
-2. Create a `.env` file in the `backend/` directory:
+2. Install dependencies from the root directory:
+   ```bash
+   uv sync
+   ```
+
+3. Create a `.env` file in the current directory:
    ```
    USE_LOCAL_STORAGE=true
    OPENAI_API_KEY=your-openai-api-key-here
    ```
 
-3. Run the application:
+4. Run the application:
    ```bash
-   cd examples/fullstack_demo
-   python backend/app.py
+   uv run main.py
    ```
 
-4. The app will automatically open in your browser at `http://localhost:8000`
+5. The app will automatically open in your browser at `http://localhost:8000`
 
-5. Game data is saved locally in `data/game_runs.json`
+6. Game data is saved locally in `data/game_runs.json`
 
 ### Supabase Configuration (Optional)
 
