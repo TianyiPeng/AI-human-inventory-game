@@ -865,8 +865,8 @@ def make_hybrid_vm_agent(initial_samples: dict = None, promised_lead_time: int =
         system += "Use these samples to inform your demand forecast:\n"
         for item_id, samples in initial_samples.items():
             system += f"  {item_id}:\n"
-            for date, demand in samples:
-                system += f"    {date}: {demand}\n"
+            for i, demand in enumerate(samples):
+                system += f"    Period {i+1}: {demand}\n"
         system += "\n"
     
     system += (

@@ -131,10 +131,13 @@ def _make_base_agent(
     or_enabled: bool = False,
 ) -> ta.Agent:
     """Create base agent using external script's agent creation function."""
+    from .config import config
+
     # Use the external make_hybrid_vm_agent from or_to_llm_csv_demo
     return make_hybrid_vm_agent(
         initial_samples=initial_samples,
         promised_lead_time=promised_lead_time,
+        model_name=config.OPENAI_MODEL,
         human_feedback_enabled=human_feedback_enabled,
         guidance_enabled=guidance_enabled
     )
