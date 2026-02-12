@@ -11,11 +11,11 @@ import uvicorn
 from dotenv import load_dotenv
 from uvicorn import Config, Server
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+APP_ROOT = Path(__file__).resolve().parent
+if str(APP_ROOT) not in sys.path:
+    sys.path.insert(0, str(APP_ROOT))
 
-from examples.fullstack_demo.backend.app import app as fastapi_app
+from backend.app import app as fastapi_app
 
 
 def _should_open_browser(reload_enabled: bool) -> bool:
@@ -32,7 +32,7 @@ def launch_uvicorn(*, reload_enabled: bool) -> None:
         backend_dir = Path(__file__).resolve().parent / "backend"
         frontend_dir = Path(__file__).resolve().parent / "frontend"
         uvicorn.run(
-            "examples.fullstack_demo.backend.app:app",
+            "backend.app:app",
             host="0.0.0.0",
             port=port,
             reload=True,
@@ -60,15 +60,11 @@ def launch_uvicorn(*, reload_enabled: bool) -> None:
 
 def main() -> None:
     # Try loading .env from multiple locations
-    # 1. From fullstack_demo directory
+    # 1. From app directory
     env_path = Path(__file__).resolve().parent / ".env"
     if env_path.exists():
         load_dotenv(env_path)
-    # 2. From project root (OR_Agent directory)
-    project_root_env = PROJECT_ROOT / ".env"
-    if project_root_env.exists():
-        load_dotenv(project_root_env)
-    # 3. From current working directory
+    # 2. From current working directory
     load_dotenv()
 
     # Disable reload in production (Render sets FULLSTACK_DEMO_RELOAD=0)

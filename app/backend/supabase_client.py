@@ -10,6 +10,8 @@ from typing import Any, Dict, Optional
 
 from supabase import Client, create_client
 
+from .config import config as app_config
+
 
 def _create_supabase_client() -> Client:
     url = os.getenv("SUPABASE_URL")
@@ -134,7 +136,31 @@ class SupabaseLogger:
         self.client.table(self.completion_table_name).insert(payload).execute()
 
 
-def get_supabase_logger() -> SupabaseLogger:
+@dataclass
+class NoOpLogger:
+    """No-op logger for local storage mode."""
+
+    def log_run(self, **kwargs) -> None:
+        """No-op."""
+        pass
+
+    def log_step(self, **kwargs) -> None:
+        """No-op."""
+        pass
+
+    def log_guidance(self, **kwargs) -> None:
+        """No-op."""
+        pass
+
+    def log_game_completion(self, **kwargs) -> None:
+        """No-op."""
+        pass
+
+
+def get_supabase_logger() -> SupabaseLogger | NoOpLogger:
+    """Get logger - returns no-op if using local storage."""
+    if app_config.USE_LOCAL_STORAGE:
+        return NoOpLogger()
     client = _create_supabase_client()
     return SupabaseLogger(client=client)
 
@@ -235,7 +261,21 @@ class SupabaseUserManager:
         return {"uuid": user_uuid, "index": index}
 
 
-def get_supabase_user_manager() -> SupabaseUserManager:
+@dataclass
+class NoOpUserManager:
+    """No-op user manager for local storage mode."""
+
+    def get_or_create_user_index(self, user_id: str, name: str) -> Dict[str, Any]:
+        """Generate deterministic UUID for local storage (no actual storage)."""
+        user_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, (user_id.strip() + name.strip()).lower())
+        # Return a stable index based on UUID (in local mode, index is just a placeholder)
+        return {"uuid": str(user_uuid), "index": 0}
+
+
+def get_supabase_user_manager() -> SupabaseUserManager | NoOpUserManager:
+    """Get user manager - returns no-op if using local storage."""
+    if app_config.USE_LOCAL_STORAGE:
+        return NoOpUserManager()
     client = _create_supabase_client()
     return SupabaseUserManager(client=client)
 

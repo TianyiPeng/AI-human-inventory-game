@@ -31,6 +31,8 @@ from .simulation_current import (
 from .supabase_client import (
     SupabaseLogger,
     SupabaseUserManager,
+    NoOpLogger,
+    NoOpUserManager,
     get_supabase_logger,
     get_supabase_user_manager,
 )
@@ -224,7 +226,7 @@ class UserIndexResponse(BaseModel):
 @app.post("/user-index", response_model=UserIndexResponse)
 def create_or_get_user_index(
     payload: UserIndexPayload,
-    user_manager: SupabaseUserManager = Depends(get_supabase_user_manager),
+    user_manager: SupabaseUserManager | NoOpUserManager = Depends(get_supabase_user_manager),
 ):
     """Create (or fetch) a stable UUID + index for this user.
 
@@ -276,9 +278,13 @@ RUN_STORE_TTL = 3600  # 1 hour in seconds
 MAX_ACTIVE_SESSIONS = 1000
 
 
-def _get_user_info(user_id: str, user_manager: SupabaseUserManager) -> Dict[str, Any]:
+def _get_user_info(user_id: str, user_manager: SupabaseUserManager | NoOpUserManager) -> Dict[str, Any]:
     """Get user index and uuid from users table by user_id."""
     try:
+        # For NoOpUserManager, just return None (local mode doesn't persist user info)
+        if isinstance(user_manager, NoOpUserManager):
+            return {"uuid": None, "index": None}
+
         # Query users table by user_id to get uuid and index
         result = (
             user_manager.client.table(user_manager.table_name)
@@ -302,8 +308,8 @@ def start_run(
     payload: StartRunPayload,
     background_tasks: BackgroundTasks,
     auth: AuthContext = Depends(get_auth_context),
-    supabase_logger: SupabaseLogger = Depends(get_supabase_logger),
-    user_manager: SupabaseUserManager = Depends(get_supabase_user_manager),
+    supabase_logger: SupabaseLogger | NoOpLogger = Depends(get_supabase_logger),
+    user_manager: SupabaseUserManager | NoOpUserManager = Depends(get_supabase_user_manager),
 ):
     # Graceful degradation: check if server is at capacity
     if len(RUN_STORE) >= MAX_ACTIVE_SESSIONS:
@@ -634,7 +640,7 @@ def submit_final_action(
     run_id: str,
     payload: FinalActionPayload,
     auth: AuthContext = Depends(get_auth_context),
-    supabase_logger: SupabaseLogger = Depends(get_supabase_logger),
+    supabase_logger: SupabaseLogger | NoOpLogger = Depends(get_supabase_logger),
 ):
     entry = _get_entry(run_id)
     _ensure_user_access(entry, auth)
@@ -713,7 +719,7 @@ def submit_guidance(
     payload: GuidancePayload,
     background_tasks: BackgroundTasks,
     auth: AuthContext = Depends(get_auth_context),
-    supabase_logger: SupabaseLogger = Depends(get_supabase_logger),
+    supabase_logger: SupabaseLogger | NoOpLogger = Depends(get_supabase_logger),
 ):
     entry = _get_entry(run_id)
     _ensure_user_access(entry, auth)
