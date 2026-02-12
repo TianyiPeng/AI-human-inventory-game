@@ -34,7 +34,7 @@ class Config:
 
     # Demand data configuration
     DEMAND_DATA_PATH: str = os.getenv(
-        "DEMAND_DATA_PATH", "examples/initial_synthetic_demand_files/demand.csv"
+        "DEMAND_DATA_PATH", "app/data/datasets/demand.csv"
     )
 
     def validate(self) -> None:
