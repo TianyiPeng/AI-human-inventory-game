@@ -6,6 +6,7 @@ A fullstack web application for exploring human-AI collaboration in inventory ma
 
 Combines interactive gameplay with LLM agents to create an engaging learning experience for inventory control and supply chain optimization.
 
+Try the live demo: [or-agent.onrender.com](https://or-agent.onrender.com/)
 </div>
 
 ## Overview
